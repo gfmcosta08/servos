@@ -2,13 +2,27 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import type { ActionResult, Service, ServiceWithTimeSlots } from '@/types/database'
+import { getAuthenticatedUser, canManageMinistryScales } from '@/lib/auth'
+import type {
+  ActionResult,
+  MinistryRole,
+  Service,
+  ServiceWithTimeSlots,
+  TimeSlotRoleWithDetails,
+  TimeSlotWithRegistrations,
+} from '@/types/database'
+import type { Registration, User } from '@/types/database'
 
 // ============================================================
 // SERVIÇOS (Datas de Serviço)
 // ============================================================
 
-// Listar datas de um ministério
+export async function canManageMinistryScalesAction(
+  ministryId: string
+): Promise<boolean> {
+  return canManageMinistryScales(ministryId)
+}
+
 export async function getServicesByMinistryAction(
   ministryId: string
 ): Promise<ActionResult<Service[]>> {
@@ -27,15 +41,17 @@ export async function getServicesByMinistryAction(
   return { success: true, data: data ?? [] }
 }
 
-// Buscar serviço com horários e inscrições
+type RegistrationWithUser = Registration & {
+  user: Pick<User, 'id' | 'name' | 'email'>
+  ministry_roles?: Pick<MinistryRole, 'name'> | null
+}
+
 export async function getServiceWithTimeSlotsAction(
   serviceId: string
 ): Promise<ActionResult<ServiceWithTimeSlots>> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
 
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // Buscar o serviço
   const { data: service, error: serviceError } = await supabase
     .from('services')
     .select('*, ministries(id, name)')
@@ -46,7 +62,6 @@ export async function getServiceWithTimeSlotsAction(
     return { success: false, error: 'Data não encontrada.' }
   }
 
-  // Buscar horários com contagem
   const { data: timeSlots, error: slotsError } = await supabase
     .from('time_slots_with_counts')
     .select('*')
@@ -57,27 +72,61 @@ export async function getServiceWithTimeSlotsAction(
     return { success: false, error: 'Erro ao buscar horários.' }
   }
 
-  // Buscar inscrições de cada horário
   const slotIds = (timeSlots ?? []).map(s => s.id)
 
-  let registrations: any[] = []
-  if (slotIds.length > 0) {
-    const { data: regs } = await supabase
-      .from('registrations')
-      .select('*, user:users(id, name, email)')
-      .in('time_slot_id', slotIds)
+  const { data: timeSlotRoles } = await supabase
+    .from('time_slot_roles')
+    .select('*, ministry_roles(id, name)')
+    .in('time_slot_id', slotIds)
 
-    registrations = regs ?? []
-  }
+  const { data: registrations } = slotIds.length > 0
+    ? await supabase
+        .from('registrations')
+        .select('*, user:users(id, name, email)')
+        .in('time_slot_id', slotIds)
+    : { data: [] }
 
-  // Montar estrutura
-  const timeSlotsWithData = (timeSlots ?? []).map(slot => ({
-    ...slot,
-    registrations: registrations.filter(r => r.time_slot_id === slot.id),
-    is_registered: user
-      ? registrations.some(r => r.time_slot_id === slot.id && r.user_id === user.id)
-      : false,
-  }))
+  const regs = (registrations ?? []) as RegistrationWithUser[]
+
+  const timeSlotsWithData: TimeSlotWithRegistrations[] = (timeSlots ?? []).map(slot => {
+    const slotRoles = (timeSlotRoles ?? []).filter(tsr => tsr.time_slot_id === slot.id)
+    const slotRegs = regs.filter(r => r.time_slot_id === slot.id)
+
+    const timeSlotRolesWithDetails: TimeSlotRoleWithDetails[] = slotRoles.map(tsr => {
+      const filled = slotRegs.filter(r => r.time_slot_role_id === tsr.id).length
+      return {
+        ...tsr,
+        ministry_role: tsr.ministry_roles as Pick<MinistryRole, 'id' | 'name'>,
+        filled,
+        available: tsr.quantity - filled,
+      }
+    })
+
+    const regsWithRole = slotRegs.map(r => {
+      const tsr = slotRoles.find(t => t.id === r.time_slot_role_id)
+      const roleName = tsr?.ministry_roles
+        ? (Array.isArray(tsr.ministry_roles)
+          ? (tsr.ministry_roles[0] as { name: string })?.name
+          : (tsr.ministry_roles as { name: string })?.name)
+        : undefined
+      return {
+        ...r,
+        ministry_role: roleName ? { name: roleName } : undefined,
+      }
+    })
+
+    const userRegRoleIds = ctx
+      ? slotRegs.filter(r => r.user_id === ctx.user.id).map(r => r.time_slot_role_id)
+      : []
+
+    return {
+      ...slot,
+      time_slot_roles: timeSlotRolesWithDetails,
+      registrations: regsWithRole,
+      is_registered: ctx ? slotRegs.some(r => r.user_id === ctx.user.id) : false,
+      user_registered_role_ids: userRegRoleIds,
+    }
+  })
 
   return {
     success: true,
@@ -89,13 +138,19 @@ export async function getServiceWithTimeSlotsAction(
   }
 }
 
-// Criar data de serviço
 export async function createServiceAction(
   formData: FormData
 ): Promise<ActionResult<Service>> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (!ctx.parishId) return { success: false, error: 'Usuário sem paróquia associada.' }
 
   const ministryId = formData.get('ministry_id') as string
+  const canManage = await canManageMinistryScales(ministryId)
+  if (!canManage) {
+    return { success: false, error: 'Sem permissão para criar escalas neste ministério.' }
+  }
   const date = formData.get('date') as string
   const description = formData.get('description') as string | null
 
@@ -103,26 +158,11 @@ export async function createServiceAction(
     return { success: false, error: 'Ministério e data são obrigatórios.' }
   }
 
-  // Obter parish_id
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: 'Não autorizado.' }
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('parish_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!userData?.parish_id) {
-    return { success: false, error: 'Usuário sem paróquia associada.' }
-  }
-
-  // Verificar que o ministério pertence à paróquia do usuário
   const { data: ministry } = await supabase
     .from('ministries')
     .select('id')
     .eq('id', ministryId)
-    .eq('parish_id', userData.parish_id)
+    .eq('parish_id', ctx.parishId)
     .single()
 
   if (!ministry) {
@@ -133,7 +173,7 @@ export async function createServiceAction(
     .from('services')
     .insert({
       ministry_id: ministryId,
-      parish_id: userData.parish_id,
+      parish_id: ctx.parishId,
       date,
       description: description?.trim() || null,
     })
@@ -148,167 +188,28 @@ export async function createServiceAction(
   return { success: true, data }
 }
 
-// Excluir serviço (cascade: apaga horários e inscrições)
 export async function deleteServiceAction(id: string): Promise<ActionResult> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+
+  const { data: service } = await supabase
+    .from('services')
+    .select('ministry_id')
+    .eq('id', id)
+    .single()
+
+  if (!service) return { success: false, error: 'Data não encontrada.' }
+
+  const canManage = await canManageMinistryScales(service.ministry_id)
+  if (!canManage) {
+    return { success: false, error: 'Sem permissão para excluir escalas deste ministério.' }
+  }
 
   const { error } = await supabase.from('services').delete().eq('id', id)
 
   if (error) {
     return { success: false, error: 'Erro ao excluir data.' }
-  }
-
-  revalidatePath('/escalas')
-  return { success: true }
-}
-
-// ============================================================
-// HORÁRIOS (Time Slots)
-// ============================================================
-
-// Criar horário
-export async function createTimeSlotAction(
-  formData: FormData
-): Promise<ActionResult> {
-  const supabase = await createClient()
-
-  const serviceId = formData.get('service_id') as string
-  const startTime = formData.get('start_time') as string
-  const endTime = formData.get('end_time') as string
-  const maxVolunteers = parseInt(formData.get('max_volunteers') as string) || 5
-
-  if (!serviceId || !startTime || !endTime) {
-    return { success: false, error: 'Preencha todos os campos.' }
-  }
-
-  if (startTime >= endTime) {
-    return { success: false, error: 'O horário de início deve ser anterior ao de fim.' }
-  }
-
-  if (maxVolunteers < 1) {
-    return { success: false, error: 'O número de vagas deve ser pelo menos 1.' }
-  }
-
-  // Obter parish_id
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: 'Não autorizado.' }
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('parish_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!userData?.parish_id) {
-    return { success: false, error: 'Usuário sem paróquia associada.' }
-  }
-
-  const { error } = await supabase
-    .from('time_slots')
-    .insert({
-      service_id: serviceId,
-      parish_id: userData.parish_id,
-      start_time: startTime,
-      end_time: endTime,
-      max_volunteers: maxVolunteers,
-    })
-
-  if (error) {
-    return { success: false, error: 'Erro ao criar horário.' }
-  }
-
-  revalidatePath('/escalas')
-  return { success: true }
-}
-
-// Excluir horário
-export async function deleteTimeSlotAction(id: string): Promise<ActionResult> {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from('time_slots').delete().eq('id', id)
-
-  if (error) {
-    return { success: false, error: 'Erro ao excluir horário.' }
-  }
-
-  revalidatePath('/escalas')
-  return { success: true }
-}
-
-// ============================================================
-// INSCRIÇÕES (Registrations) – Toggle
-// ============================================================
-
-// Inscrever voluntário em um horário
-export async function registerVolunteerAction(
-  timeSlotId: string
-): Promise<ActionResult> {
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: 'Não autorizado.' }
-
-  const { data: userData } = await supabase
-    .from('users')
-    .select('parish_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!userData?.parish_id) {
-    return { success: false, error: 'Usuário sem paróquia associada.' }
-  }
-
-  // Verificar se horário ainda tem vagas
-  const { data: slot } = await supabase
-    .from('time_slots_with_counts')
-    .select('*')
-    .eq('id', timeSlotId)
-    .single()
-
-  if (!slot) {
-    return { success: false, error: 'Horário não encontrado.' }
-  }
-
-  if (slot.available_spots <= 0) {
-    return { success: false, error: 'Não há vagas disponíveis neste horário.' }
-  }
-
-  const { error } = await supabase
-    .from('registrations')
-    .insert({
-      user_id: user.id,
-      time_slot_id: timeSlotId,
-      parish_id: userData.parish_id,
-    })
-
-  if (error) {
-    if (error.code === '23505') {
-      return { success: false, error: 'Você já está inscrito neste horário.' }
-    }
-    return { success: false, error: 'Erro ao realizar inscrição.' }
-  }
-
-  revalidatePath('/escalas')
-  return { success: true }
-}
-
-// Cancelar inscrição
-export async function unregisterVolunteerAction(
-  timeSlotId: string
-): Promise<ActionResult> {
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: 'Não autorizado.' }
-
-  const { error } = await supabase
-    .from('registrations')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('time_slot_id', timeSlotId)
-
-  if (error) {
-    return { success: false, error: 'Erro ao cancelar inscrição.' }
   }
 
   revalidatePath('/escalas')

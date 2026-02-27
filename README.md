@@ -42,7 +42,10 @@ Preencha com suas credenciais do Supabase:
 NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_anon_key
 SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
+
+> **NEXT_PUBLIC_SITE_URL:** URL base do site. Obrigatório para links de recuperação de senha. Em produção, use a URL do deploy (ex: `https://seu-app.vercel.app`).
 
 ### 4. Criar o banco de dados no Supabase
 
@@ -50,16 +53,7 @@ SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
 2. Abra e execute o arquivo `database.sql` completo
 3. Confirme que as tabelas foram criadas em **Table Editor**
 
-### 5. Remover arquivo legado (importante)
-
-O Next.js 16 substituiu `middleware.ts` por `proxy.ts`. Delete o arquivo antigo:
-
-```bash
-# No terminal dentro da pasta servos/
-rm middleware.ts   # ou delete manualmente pelo explorador de arquivos
-```
-
-### 6. Executar localmente
+### 5. Executar localmente
 
 ```bash
 npm run dev
@@ -184,7 +178,10 @@ Em cada horário:
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
+NEXT_PUBLIC_SITE_URL
 ```
+
+> **NEXT_PUBLIC_SITE_URL** deve apontar para a URL do seu deploy (ex: `https://seu-app.vercel.app`). Necessário para links de confirmação de email e recuperação de senha.
 
 ---
 

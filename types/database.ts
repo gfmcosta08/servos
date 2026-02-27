@@ -23,6 +23,7 @@ export interface User {
   email: string
   role: UserRole
   parish_id: string | null
+  ministry_preference_id?: string | null
   created_at: string
 }
 
@@ -31,6 +32,21 @@ export interface Ministry {
   name: string
   description: string | null
   parish_id: string
+  created_at: string
+}
+
+export interface MinistryRole {
+  id: string
+  ministry_id: string
+  name: string
+  sort_order: number
+  created_at: string
+}
+
+export interface MinistryCoordinator {
+  id: string
+  user_id: string
+  ministry_id: string
   created_at: string
 }
 
@@ -49,7 +65,14 @@ export interface TimeSlot {
   parish_id: string
   start_time: string
   end_time: string
-  max_volunteers: number
+  created_at: string
+}
+
+export interface TimeSlotRole {
+  id: string
+  time_slot_id: string
+  ministry_role_id: string
+  quantity: number
   created_at: string
 }
 
@@ -57,8 +80,14 @@ export interface Registration {
   id: string
   user_id: string
   time_slot_id: string
+  time_slot_role_id: string
   parish_id: string
   created_at: string
+}
+
+// TimeSlot da view (com max_volunteers calculado)
+export interface TimeSlotFromView extends TimeSlot {
+  max_volunteers: number
 }
 
 // ============================================================
@@ -66,13 +95,22 @@ export interface Registration {
 // ============================================================
 
 export interface TimeSlotWithCounts extends TimeSlot {
+  max_volunteers: number
   current_volunteers: number
   available_spots: number
 }
 
+export interface TimeSlotRoleWithDetails extends TimeSlotRole {
+  ministry_role: Pick<MinistryRole, 'id' | 'name'>
+  filled: number
+  available: number
+}
+
 export interface TimeSlotWithRegistrations extends TimeSlotWithCounts {
-  registrations: (Registration & { user: Pick<User, 'id' | 'name' | 'email'> })[]
+  time_slot_roles: TimeSlotRoleWithDetails[]
+  registrations: (Registration & { user: Pick<User, 'id' | 'name' | 'email'>; ministry_role?: Pick<MinistryRole, 'name'> })[]
   is_registered?: boolean
+  user_registered_role_ids?: string[]
 }
 
 export interface ServiceWithTimeSlots extends Service {
@@ -110,7 +148,7 @@ export interface CreateTimeSlotForm {
   service_id: string
   start_time: string
   end_time: string
-  max_volunteers: number
+  roles: { ministry_role_id: string; quantity: number }[]
 }
 
 export interface RegisterForm {
@@ -122,6 +160,16 @@ export interface RegisterForm {
   parish_name?: string
   parish_city?: string
   parish_state?: string
+}
+
+// ============================================================
+// Contexto de autenticação (helper para Server Actions)
+// ============================================================
+
+export interface AuthContext {
+  user: { id: string }
+  parishId: string | null
+  role: UserRole
 }
 
 // ============================================================
@@ -154,6 +202,20 @@ export interface UpcomingService {
 }
 
 // ============================================================
+// Usuário atual (com paróquia)
+// ============================================================
+
+export interface CurrentUser {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+  parish_id: string | null
+  created_at: string
+  parishes: Pick<Parish, 'id' | 'name' | 'city' | 'state'> | null
+}
+
+// ============================================================
 // Database Types para Supabase Client
 // ============================================================
 
@@ -175,6 +237,11 @@ export type Database = {
         Insert: Omit<Ministry, 'id' | 'created_at'>
         Update: Partial<Omit<Ministry, 'id' | 'parish_id' | 'created_at'>>
       }
+      ministry_roles: {
+        Row: MinistryRole
+        Insert: Omit<MinistryRole, 'id' | 'created_at'>
+        Update: Partial<Omit<MinistryRole, 'id' | 'ministry_id' | 'created_at'>>
+      }
       services: {
         Row: Service
         Insert: Omit<Service, 'id' | 'created_at'>
@@ -184,6 +251,11 @@ export type Database = {
         Row: TimeSlot
         Insert: Omit<TimeSlot, 'id' | 'created_at'>
         Update: Partial<Omit<TimeSlot, 'id' | 'parish_id' | 'created_at'>>
+      }
+      time_slot_roles: {
+        Row: TimeSlotRole
+        Insert: Omit<TimeSlotRole, 'id' | 'created_at'>
+        Update: Partial<Omit<TimeSlotRole, 'id' | 'time_slot_id' | 'ministry_role_id' | 'created_at'>>
       }
       registrations: {
         Row: Registration

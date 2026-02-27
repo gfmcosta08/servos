@@ -4,18 +4,20 @@ import { useState } from "react";
 import {
   registerVolunteerAction,
   unregisterVolunteerAction,
-} from "@/lib/actions/services";
+} from "@/lib/actions/registrations";
 import toast from "react-hot-toast";
 
 interface RegistrationToggleProps {
-  timeSlotId: string;
+  timeSlotRoleId: string;
+  roleName: string;
   isRegistered: boolean;
   isFull: boolean;
   onToggle: (registered: boolean) => void;
 }
 
 export function RegistrationToggle({
-  timeSlotId,
+  timeSlotRoleId,
+  roleName,
   isRegistered,
   isFull,
   onToggle,
@@ -28,13 +30,13 @@ export function RegistrationToggle({
     setLoading(true);
 
     const result = isRegistered
-      ? await unregisterVolunteerAction(timeSlotId)
-      : await registerVolunteerAction(timeSlotId);
+      ? await unregisterVolunteerAction(timeSlotRoleId)
+      : await registerVolunteerAction(timeSlotRoleId);
 
     if (result.success) {
       onToggle(!isRegistered);
       toast.success(
-        isRegistered ? "Inscrição cancelada." : "Inscrito com sucesso!"
+        isRegistered ? "Inscrição cancelada." : `Inscrito como ${roleName}!`
       );
     } else {
       toast.error(result.error ?? "Erro na operação.");

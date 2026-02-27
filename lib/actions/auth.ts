@@ -117,6 +117,7 @@ export async function registerJoinParishAction(
   const email = formData.get('email') as string
   const password = formData.get('password') as string
   const parishId = formData.get('parish_id') as string
+  const ministryId = formData.get('ministry_id') as string | null
 
   if (!name || !email || !password || !parishId) {
     return { success: false, error: 'Preencha todos os campos.' }
@@ -137,7 +138,7 @@ export async function registerJoinParishAction(
     return { success: false, error: 'Paróquia não encontrada.' }
   }
 
-  // Criar usuário como VOLUNTEER
+  // Criar usuário como VOLUNTEER (ministry_id = ministério ao qual se candidatou)
   const { error: authError } = await supabase.auth.signUp({
     email,
     password,
@@ -146,6 +147,7 @@ export async function registerJoinParishAction(
         name,
         role: 'VOLUNTEER',
         parish_id: parishId,
+        ...(ministryId && { ministry_id: ministryId }),
       },
     },
   })
@@ -232,6 +234,28 @@ export async function getParishesAction(): Promise<ActionResult<{ id: string; na
 
   if (error) {
     return { success: false, error: 'Erro ao buscar paróquias.' }
+  }
+
+  return { success: true, data: data ?? [] }
+}
+
+// ============================================================
+// Buscar ministérios de uma paróquia (para registro - escolher ministério)
+// Usa admin client pois usuário ainda não está autenticado
+// ============================================================
+export async function getMinistriesByParishAction(
+  parishId: string
+): Promise<ActionResult<{ id: string; name: string }[]>> {
+  const adminClient = createAdminClient()
+
+  const { data, error } = await adminClient
+    .from('ministries')
+    .select('id, name')
+    .eq('parish_id', parishId)
+    .order('name')
+
+  if (error) {
+    return { success: false, error: 'Erro ao buscar ministérios.' }
   }
 
   return { success: true, data: data ?? [] }

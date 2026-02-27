@@ -1,7 +1,13 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import type { ActionResult, DashboardStats, UpcomingService } from '@/types/database'
+import { getAuthenticatedUser } from '@/lib/auth'
+import type {
+  ActionResult,
+  CurrentUser,
+  DashboardStats,
+  UpcomingService,
+} from '@/types/database'
 
 // ============================================================
 // DASHBOARD - Métricas da Paróquia
@@ -10,9 +16,8 @@ import type { ActionResult, DashboardStats, UpcomingService } from '@/types/data
 
 export async function getDashboardStatsAction(): Promise<ActionResult<DashboardStats>> {
   const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: 'Não autorizado.' }
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
 
   // Total de voluntários (via RLS, só da paróquia)
   const { count: totalVolunteers } = await supabase
@@ -62,7 +67,6 @@ export async function getUpcomingServicesAction(): Promise<ActionResult<Upcoming
       ministries(name),
       time_slots(
         id,
-        max_volunteers,
         registrations(id)
       )
     `)
@@ -70,19 +74,51 @@ export async function getUpcomingServicesAction(): Promise<ActionResult<Upcoming
     .order('date', { ascending: true })
     .limit(5)
 
+  const serviceIds = (services ?? []).map((s: { id: string }) => s.id)
+  const { data: slotCounts } =
+    serviceIds.length > 0
+      ? await supabase
+          .from('time_slots_with_counts')
+          .select('service_id, max_volunteers')
+          .in('service_id', serviceIds)
+      : { data: [] }
+
   if (error) {
     return { success: false, error: 'Erro ao buscar próximos serviços.' }
   }
 
-  const upcoming: UpcomingService[] = (services ?? []).map((s: any) => {
+  interface ServiceRow {
+    id: string
+    date: string
+    ministries?: { name?: string } | { name?: string }[] | null
+    time_slots?: Array<{ id: string; registrations?: unknown[] }>
+  }
+
+  const getMinistryName = (m: ServiceRow['ministries']): string => {
+    if (!m) return ''
+    return Array.isArray(m) ? (m[0]?.name ?? '') : (m?.name ?? '')
+  }
+
+  const totalByService = (slotCounts ?? []).reduce(
+    (acc: Record<string, number>, row: { service_id: string; max_volunteers: number }) => {
+      acc[row.service_id] = (acc[row.service_id] ?? 0) + row.max_volunteers
+      return acc
+    },
+    {} as Record<string, number>
+  )
+
+  const upcoming: UpcomingService[] = ((services ?? []) as ServiceRow[]).map((s) => {
     const slots = s.time_slots ?? []
-    const totalSlots = slots.reduce((acc: number, slot: any) => acc + slot.max_volunteers, 0)
-    const filledSlots = slots.reduce((acc: number, slot: any) => acc + (slot.registrations?.length ?? 0), 0)
+    const filledSlots = slots.reduce(
+      (acc, slot) => acc + (slot.registrations?.length ?? 0),
+      0
+    )
+    const totalSlots = totalByService[s.id] ?? 0
 
     return {
       id: s.id,
       date: s.date,
-      ministry_name: s.ministries?.name ?? '',
+      ministry_name: getMinistryName(s.ministries),
       total_slots: totalSlots,
       filled_slots: filledSlots,
     }
@@ -91,8 +127,7 @@ export async function getUpcomingServicesAction(): Promise<ActionResult<Upcoming
   return { success: true, data: upcoming }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getCurrentUserAction(): Promise<any | null> {
+export async function getCurrentUserAction(): Promise<CurrentUser | null> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -104,5 +139,5 @@ export async function getCurrentUserAction(): Promise<any | null> {
     .eq('id', user.id)
     .single()
 
-  return userData as any
+  return userData as CurrentUser | null
 }

@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const stats = statsResult.data;
   const upcomingServices = servicesResult.data ?? [];
 
-  const parishName = (currentUser as any)?.parishes?.name ?? "sua paróquia";
+  const parishName = currentUser?.parishes?.name ?? "sua paróquia";
   const firstName = currentUser?.name?.split(" ")[0] ?? "Bem-vindo";
 
   const statCards = [

@@ -1,10 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { UserCheck, Shield, ChevronDown } from "lucide-react";
-import { getVolunteersAction, updateUserRoleAction } from "@/lib/actions/volunteers";
+import { UserCheck, Shield, ChevronDown, Plus, X } from "lucide-react";
+import {
+  getVolunteersAction,
+  updateUserRoleAction,
+  addMinistryCoordinatorAction,
+  removeMinistryCoordinatorAction,
+} from "@/lib/actions/volunteers";
+import { getMinistriesAction } from "@/lib/actions/ministries";
 import toast from "react-hot-toast";
-import type { User, UserRole } from "@/types/database";
+import type { UserRole } from "@/types/database";
+import type { UserWithCoordinators } from "@/lib/actions/volunteers";
 import { createClient } from "@/lib/supabase/client";
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -22,16 +29,22 @@ const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 export default function VoluntariosPage() {
-  const [volunteers, setVolunteers] = useState<User[]>([]);
+  const [volunteers, setVolunteers] = useState<UserWithCoordinators[]>([]);
+  const [ministries, setMinistries] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [addingFor, setAddingFor] = useState<{ userId: string; userName: string } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const result = await getVolunteersAction();
-    if (result.success) setVolunteers(result.data ?? []);
+    const [volResult, minResult] = await Promise.all([
+      getVolunteersAction(),
+      getMinistriesAction(),
+    ]);
+    if (volResult.success) setVolunteers(volResult.data ?? []);
+    if (minResult.success) setMinistries(minResult.data?.map((m) => ({ id: m.id, name: m.name })) ?? []);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -57,6 +70,27 @@ export default function VoluntariosPage() {
     );
     if (result.success) {
       toast.success("Cargo atualizado.");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro.");
+    }
+  }
+
+  async function handleAddCoordinator(userId: string, ministryId: string) {
+    const result = await addMinistryCoordinatorAction(userId, ministryId);
+    if (result.success) {
+      toast.success("Coordenador adicionado.");
+      setAddingFor(null);
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro.");
+    }
+  }
+
+  async function handleRemoveCoordinator(userId: string, ministryId: string) {
+    const result = await removeMinistryCoordinatorAction(userId, ministryId);
+    if (result.success) {
+      toast.success("Coordenador removido.");
       loadData();
     } else {
       toast.error(result.error ?? "Erro.");
@@ -121,6 +155,9 @@ export default function VoluntariosPage() {
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Cargo
                 </th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Coordenador de
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -169,6 +206,69 @@ export default function VoluntariosPage() {
                         ) : null}
                         {ROLE_LABELS[vol.role as UserRole] ?? vol.role}
                       </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {vol.coordinator_of?.map((m) => (
+                        <span
+                          key={m.id}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700"
+                        >
+                          {m.name}
+                          {canManage && vol.id !== currentUserId && vol.role !== "SUPER_ADMIN" && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCoordinator(vol.id, m.id)}
+                              className="hover:bg-blue-100 rounded p-0.5"
+                              aria-label={`Remover coordenador de ${m.name}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                      {canManage &&
+                        vol.id !== currentUserId &&
+                        vol.role !== "SUPER_ADMIN" &&
+                        vol.role !== "ADMIN_PARISH" && (
+                          addingFor?.userId === vol.id ? (
+                            <select
+                              className="text-xs border rounded px-2 py-1"
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v) {
+                                  handleAddCoordinator(vol.id, v);
+                                }
+                              }}
+                              onBlur={() => setAddingFor(null)}
+                              autoFocus
+                            >
+                              <option value="">Selecione o ministério</option>
+                              {ministries
+                                .filter((m) => !vol.coordinator_of?.some((c) => c.id === m.id))
+                                .map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.name}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setAddingFor({ userId: vol.id, userName: vol.name })}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200"
+                              title="Delegar como coordenador"
+                            >
+                              <Plus className="w-3 h-3" /> Coordenador
+                            </button>
+                          )
+                        )}
+                    </div>
+                    {vol.ministry_preference && !vol.coordinator_of?.some((c) => c.id === vol.ministry_preference?.id) && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Candidatou-se a: {vol.ministry_preference.name}
+                      </p>
                     )}
                   </td>
                 </tr>

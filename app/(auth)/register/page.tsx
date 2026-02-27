@@ -6,6 +6,7 @@ import {
   registerWithNewParishAction,
   registerJoinParishAction,
   getParishesAction,
+  getMinistriesByParishAction,
 } from "@/lib/actions/auth";
 import { generateSlug, ESTADOS_BR } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -19,11 +20,19 @@ interface ParishOption {
   state: string;
 }
 
+interface MinistryOption {
+  id: string;
+  name: string;
+}
+
 export default function RegisterPage() {
   const [option, setOption] = useState<Option>("create");
   const [loading, setLoading] = useState(false);
   const [parishes, setParishes] = useState<ParishOption[]>([]);
+  const [ministries, setMinistries] = useState<MinistryOption[]>([]);
+  const [loadingMinistries, setLoadingMinistries] = useState(false);
   const [parishName, setParishName] = useState("");
+  const [selectedParishId, setSelectedParishId] = useState("");
 
   useEffect(() => {
     if (option === "join") {
@@ -32,6 +41,20 @@ export default function RegisterPage() {
       });
     }
   }, [option]);
+
+  useEffect(() => {
+    if (option === "join" && selectedParishId) {
+      setLoadingMinistries(true);
+      getMinistriesByParishAction(selectedParishId).then((result) => {
+        if (result.success && result.data) setMinistries(result.data ?? []);
+        else setMinistries([]);
+        setLoadingMinistries(false);
+      });
+    } else {
+      setMinistries([]);
+      setLoadingMinistries(false);
+    }
+  }, [option, selectedParishId]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -205,6 +228,8 @@ export default function RegisterPage() {
                 <select
                   name="parish_id"
                   required
+                  value={selectedParishId}
+                  onChange={(e) => setSelectedParishId(e.target.value)}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition bg-white"
                 >
                   <option value="">Selecione uma paróquia</option>
@@ -216,6 +241,32 @@ export default function RegisterPage() {
                 </select>
               )}
             </div>
+            {selectedParishId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ministério ao qual deseja se candidatar
+                </label>
+                {loadingMinistries ? (
+                  <p className="text-sm text-gray-400 py-2">Carregando ministérios...</p>
+                ) : ministries.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-2">
+                    Nenhum ministério cadastrado. O administrador pode adicionar você depois.
+                  </p>
+                ) : (
+                  <select
+                    name="ministry_id"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition bg-white"
+                  >
+                    <option value="">Selecione (opcional)</option>
+                    {ministries.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </>
         )}
 

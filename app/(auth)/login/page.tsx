@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { loginAction } from "@/lib/actions/auth";
 import toast from "react-hot-toast";
 
-export default function LoginPage() {
+// Separado em componente próprio pois useSearchParams exige Suspense boundary
+function LoginForm() {
   const [loading, setLoading] = useState(false);
   const searchParams = useSearchParams();
 
@@ -93,5 +94,13 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

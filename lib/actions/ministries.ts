@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { getAuthenticatedUser } from '@/lib/auth'
+import { getAuthenticatedUser, canManageMinistryScales } from '@/lib/auth'
 import type { ActionResult, Ministry, MinistryRole } from '@/types/database'
 
 // ============================================================
@@ -148,10 +148,8 @@ export async function createMinistryRoleAction(
   const supabase = await createClient()
   const ctx = await getAuthenticatedUser()
   if (!ctx) return { success: false, error: 'Não autorizado.' }
-  if (!ctx.parishId) return { success: false, error: 'Usuário sem paróquia associada.' }
-  if (!['ADMIN_PARISH', 'COORDINATOR', 'SUPER_ADMIN'].includes(ctx.role)) {
-    return { success: false, error: 'Sem permissão.' }
-  }
+  const canManage = await canManageMinistryScales(ministryId)
+  if (!canManage) return { success: false, error: 'Sem permissão para adicionar funções neste ministério.' }
 
   if (!name?.trim()) {
     return { success: false, error: 'O nome da função é obrigatório.' }

@@ -96,8 +96,7 @@ export async function registerWithNewParishAction(
     if (authError.message.includes('already registered')) {
       return { success: false, error: 'Este email já está cadastrado.' }
     }
-    // DEBUG TEMPORÁRIO: expor erro real para diagnóstico
-    return { success: false, error: `[DEBUG] ${authError.message}` }
+    return { success: false, error: 'Erro ao criar conta. Tente novamente.' }
   }
 
   revalidatePath('/', 'layout')

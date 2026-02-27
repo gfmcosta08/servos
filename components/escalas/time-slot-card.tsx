@@ -16,8 +16,10 @@ interface TimeSlotCardProps {
 
 export function TimeSlotCard({ slot, canManage, onDeleted }: TimeSlotCardProps) {
   const [registrations, setRegistrations] = useState(slot.registrations);
+  // Contador separado para atualização otimista imediata após toggle
+  const [registrationCount, setRegistrationCount] = useState(slot.registrations.length);
   const [isRegistered, setIsRegistered] = useState(slot.is_registered ?? false);
-  const isFull = registrations.length >= slot.max_volunteers;
+  const isFull = registrationCount >= slot.max_volunteers;
 
   async function handleDelete() {
     if (!confirm("Excluir este horário?")) return;
@@ -32,10 +34,11 @@ export function TimeSlotCard({ slot, canManage, onDeleted }: TimeSlotCardProps) 
 
   function handleToggle(nowRegistered: boolean) {
     setIsRegistered(nowRegistered);
-    // Atualizar lista local de inscritos (recarrega na próxima visita)
+    // Atualização otimista: incrementa/decrementa o contador imediatamente
+    setRegistrationCount((prev) => (nowRegistered ? prev + 1 : prev - 1));
   }
 
-  const fillPercent = Math.round((registrations.length / slot.max_volunteers) * 100);
+  const fillPercent = Math.round((registrationCount / slot.max_volunteers) * 100);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -47,7 +50,7 @@ export function TimeSlotCard({ slot, canManage, onDeleted }: TimeSlotCardProps) 
               {formatTimeRange(slot.start_time, slot.end_time)}
             </p>
             <p className="text-xs text-gray-400 mt-0.5">
-              {registrations.length}/{slot.max_volunteers} vagas
+              {registrationCount}/{slot.max_volunteers} vagas
             </p>
           </div>
 

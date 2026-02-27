@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/layout/sidebar";
+import { AppShell } from "@/components/layout/app-shell";
 
 export default async function AppLayout({
   children,
@@ -30,15 +30,12 @@ export default async function AppLayout({
   const parishName = userData?.parishes?.name;
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <Sidebar
-        parishName={parishName}
-        userName={userData?.name}
-        userRole={userData?.role}
-      />
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
-    </div>
+    <AppShell
+      parishName={parishName}
+      userName={userData?.name}
+      userRole={userData?.role}
+    >
+      {children}
+    </AppShell>
   );
 }

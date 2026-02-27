@@ -100,7 +100,9 @@ export async function registerWithNewParishAction(
   }
 
   revalidatePath('/', 'layout')
-  redirect('/dashboard')
+
+  // Se session for null, o Supabase exige confirmação de e-mail antes do login
+  redirect('/confirmar-email')
 }
 
 // ============================================================
@@ -153,6 +155,64 @@ export async function registerJoinParishAction(
       return { success: false, error: 'Este email já está cadastrado.' }
     }
     return { success: false, error: 'Erro ao criar conta. Tente novamente.' }
+  }
+
+  revalidatePath('/', 'layout')
+
+  // Se session for null, o Supabase exige confirmação de e-mail antes do login
+  redirect('/confirmar-email')
+}
+
+// ============================================================
+// RECUPERAÇÃO DE SENHA
+// ============================================================
+export async function forgotPasswordAction(
+  formData: FormData
+): Promise<ActionResult> {
+  const supabase = await createClient()
+
+  const email = formData.get('email') as string
+  if (!email) {
+    return { success: false, error: 'Informe o seu email.' }
+  }
+
+  // redirectTo aponta para a rota /auth/confirm com type=recovery
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/auth/confirm?type=recovery`,
+  })
+
+  // Não revelar se o e-mail existe ou não (segurança)
+  if (error) {
+    console.error('[forgotPassword]', error.message)
+  }
+
+  return { success: true }
+}
+
+export async function resetPasswordAction(
+  formData: FormData
+): Promise<ActionResult> {
+  const supabase = await createClient()
+
+  const password        = formData.get('password') as string
+  const confirmPassword = formData.get('confirm_password') as string
+
+  if (!password || !confirmPassword) {
+    return { success: false, error: 'Preencha todos os campos.' }
+  }
+
+  if (password !== confirmPassword) {
+    return { success: false, error: 'As senhas não coincidem.' }
+  }
+
+  if (password.length < 6) {
+    return { success: false, error: 'A senha deve ter pelo menos 6 caracteres.' }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password })
+
+  if (error) {
+    return { success: false, error: 'Erro ao atualizar senha. O link pode ter expirado, solicite um novo.' }
   }
 
   revalidatePath('/', 'layout')

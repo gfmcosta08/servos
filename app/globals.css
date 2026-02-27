@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    font-family: 'Inter', sans-serif;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+@layer components {
+  /* Toggle Switch */
+  .toggle-switch {
+    @apply relative inline-flex items-center cursor-pointer;
+  }
+
+  .toggle-switch input[type="checkbox"] {
+    @apply sr-only;
+  }
+
+  .toggle-track {
+    @apply w-11 h-6 bg-gray-200 rounded-full transition-colors duration-200;
+  }
+
+  .toggle-thumb {
+    @apply absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 shadow-sm;
+  }
+
+  input[type="checkbox"]:checked ~ .toggle-track {
+    @apply bg-primary-600;
+  }
+
+  input[type="checkbox"]:checked ~ .toggle-thumb {
+    @apply translate-x-5;
+  }
+
+  input[type="checkbox"]:disabled ~ .toggle-track {
+    @apply opacity-50 cursor-not-allowed;
+  }
+}

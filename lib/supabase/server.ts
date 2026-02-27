@@ -1,5 +1,14 @@
 import { createServerClient, type CookieMethodsServer } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+
+// Cliente admin com service role (bypassa RLS) — usar apenas em Server Actions seguras
+export function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function createClient() {

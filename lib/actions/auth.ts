@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { generateSlug } from '@/lib/utils'
 import type { ActionResult } from '@/types/database'
 
@@ -61,9 +61,10 @@ export async function registerWithNewParishAction(
     return { success: false, error: 'A senha deve ter pelo menos 6 caracteres.' }
   }
 
-  // 1. Criar paróquia
+  // 1. Criar paróquia usando admin client (bypassa RLS para registro inicial)
+  const adminClient = createAdminClient()
   const slug = generateSlug(parishName)
-  const { data: parish, error: parishError } = await supabase
+  const { data: parish, error: parishError } = await adminClient
     .from('parishes')
     .insert({ name: parishName, slug, city: parishCity, state: parishState })
     .select()
@@ -91,7 +92,7 @@ export async function registerWithNewParishAction(
 
   if (authError) {
     // Reverter criação da paróquia
-    await supabase.from('parishes').delete().eq('id', parish.id)
+    await adminClient.from('parishes').delete().eq('id', parish.id)
     if (authError.message.includes('already registered')) {
       return { success: false, error: 'Este email já está cadastrado.' }
     }

@@ -21,6 +21,14 @@ export function formatDateShort(dateStr: string): string {
   }
 }
 
+export function formatDateTime(dateStr: string): string {
+  try {
+    return format(parseISO(dateStr), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+  } catch {
+    return dateStr
+  }
+}
+
 export function formatTime(timeStr: string): string {
   // timeStr formato HH:MM:SS → retorna HH:MM
   return timeStr.slice(0, 5)

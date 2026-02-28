@@ -53,6 +53,15 @@ export interface MinistryCoordinator {
   created_at: string
 }
 
+export interface MinistryAnnouncement {
+  id: string
+  ministry_id: string
+  created_by: string
+  title: string
+  content: string
+  created_at: string
+}
+
 export interface UserMinistry {
   user_id: string
   ministry_id: string

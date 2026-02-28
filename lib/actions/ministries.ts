@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser, canManageMinistryScales, getUserMinistryIds, canAccessMinistry } from '@/lib/auth'
-import type { ActionResult, Ministry, MinistryRole } from '@/types/database'
+import type { ActionResult, Ministry, MinistryRole, MinistryAnnouncement } from '@/types/database'
 
 // ============================================================
 // REGRA ABSOLUTA: Toda operação verificada por parish_id via RLS
@@ -344,4 +344,79 @@ export async function deleteMinistryRoleAction(
   revalidatePath('/ministerios')
   revalidatePath('/escalas')
   return { success: true }
+}
+
+// ============================================================
+// DETALHE DO MINISTÉRIO (página /ministerios/[id])
+// ============================================================
+
+export type MinistryDetailResult = {
+  ministry: Ministry
+  userStatus: 'approved' | 'pending' | 'none'
+  canManage: boolean
+}
+
+export async function getMinistryDetailAction(
+  ministryId: string
+): Promise<ActionResult<MinistryDetailResult>> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+
+  const { data: ministry, error } = await supabase
+    .from('ministries')
+    .select('*')
+    .eq('id', ministryId)
+    .single()
+
+  if (error || !ministry) {
+    return { success: false, error: 'Ministério não encontrado.' }
+  }
+
+  if (ctx.role !== 'SUPER_ADMIN' && ministry.parish_id !== ctx.parishId) {
+    return { success: false, error: 'Ministério não pertence à sua paróquia.' }
+  }
+
+  let userStatus: 'approved' | 'pending' | 'none' = 'none'
+  if (ctx.role === 'VOLUNTEER') {
+    const { data: um } = await supabase
+      .from('user_ministries')
+      .select('status')
+      .eq('user_id', ctx.user.id)
+      .eq('ministry_id', ministryId)
+      .maybeSingle()
+    if (um) {
+      const s = (um as { status?: string }).status
+      userStatus = s === 'APPROVED' || s === null || s === undefined ? 'approved' : 'pending'
+    }
+  } else {
+    const canAccess = await canAccessMinistry(ctx.user.id, ministryId)
+    userStatus = canAccess ? 'approved' : 'none'
+  }
+
+  const canManage = ctx.role === 'SUPER_ADMIN' || (await canManageMinistryScales(ministryId))
+
+  return {
+    success: true,
+    data: { ministry, userStatus, canManage },
+  }
+}
+
+export async function getMinistryAnnouncementsAction(
+  ministryId: string
+): Promise<ActionResult<MinistryAnnouncement[]>> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, ministryId)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
+
+  const { data, error } = await supabase
+    .from('ministry_announcements')
+    .select('*')
+    .eq('ministry_id', ministryId)
+    .order('created_at', { ascending: false })
+
+  if (error) return { success: false, error: 'Erro ao buscar recados.' }
+  return { success: true, data: data ?? [] }
 }

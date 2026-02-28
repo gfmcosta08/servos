@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, BookOpen, Pencil, Trash2, Users2, UserPlus, Clock } from "lucide-react";
+import Link from "next/link";
+import { Plus, BookOpen, Pencil, Trash2, Users2, UserPlus, Clock, ChevronRight } from "lucide-react";
 import {
   getMinistriesAction,
   getMinistriesForVolunteerAction,
   deleteMinistryAction,
-  requestMinistryAccessAction,
 } from "@/lib/actions/ministries";
 import { getCurrentUserAction } from "@/lib/actions/dashboard";
 import { MinistryModal } from "@/components/ministerios/ministry-modal";
@@ -17,38 +17,44 @@ import type { MinistryWithStatus } from "@/lib/actions/ministries";
 function MinistryCard({
   ministry,
   canCreateMinistry,
+  href,
   onEdit,
   onDelete,
 }: {
   ministry: Ministry;
   canCreateMinistry: boolean;
+  href?: string;
   onEdit: (m: Ministry) => void;
   onDelete: (m: Ministry) => void;
 }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow group">
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center shrink-0">
           <BookOpen className="w-5 h-5 text-primary-600" />
         </div>
-        {canCreateMinistry && (
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {canCreateMinistry ? (
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => onEdit(ministry)}
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(ministry); }}
               className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition"
               title="Editar"
             >
               <Pencil className="w-4 h-4" />
             </button>
             <button
-              onClick={() => onDelete(ministry)}
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(ministry); }}
               className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
               title="Excluir"
             >
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
-        )}
+        ) : href ? (
+          <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-primary-500 transition" />
+        ) : null}
       </div>
       <div className="mt-3">
         <h3 className="font-semibold text-gray-900">{ministry.name}</h3>
@@ -58,8 +64,18 @@ function MinistryCard({
           </p>
         )}
       </div>
-    </div>
+    </>
   );
+
+  const className = "bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow group block text-left";
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }
 
 export default function MinistriosPage() {
@@ -73,7 +89,6 @@ export default function MinistriosPage() {
   const [editingMinistry, setEditingMinistry] = useState<Ministry | undefined>();
   const [canCreateMinistry, setCanCreateMinistry] = useState(false);
   const [isVolunteer, setIsVolunteer] = useState(false);
-  const [requestingId, setRequestingId] = useState<string | null>(null);
 
   const loadMinistries = useCallback(async () => {
     setLoading(true);
@@ -140,21 +155,6 @@ export default function MinistriosPage() {
     loadMinistries();
   }
 
-  async function handleRequestAccess(ministryId: string) {
-    setRequestingId(ministryId);
-    const result = await requestMinistryAccessAction(ministryId);
-    if (result.success) {
-      toast.success("Solicitação enviada. Aguarde aprovação do coordenador.");
-      loadMinistries();
-    } else {
-      toast.error(result.error ?? "Erro ao enviar solicitação.");
-    }
-    setRequestingId(null);
-  }
-
-  const displayMinistries = isVolunteer && volunteerData
-    ? [...volunteerData.my, ...volunteerData.other]
-    : ministries;
   const hasContent = isVolunteer && volunteerData
     ? volunteerData.my.length > 0 || volunteerData.other.length > 0
     : ministries.length > 0;
@@ -227,6 +227,7 @@ export default function MinistriosPage() {
                     key={ministry.id}
                     ministry={ministry}
                     canCreateMinistry={false}
+                    href={`/ministerios/${ministry.id}`}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                   />
@@ -238,18 +239,20 @@ export default function MinistriosPage() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Outros ministérios</h2>
               <p className="text-sm text-gray-500 mb-4">
-                Clique em &quot;Candidatar-se&quot; para solicitar acesso. O coordenador do ministério precisará aprovar.
+                Clique no ministério para ver detalhes e se candidatar. O coordenador precisará aprovar.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {volunteerData.other.map((m) => (
-                  <div
+                  <Link
                     key={m.id}
-                    className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow"
+                    href={`/ministerios/${m.id}`}
+                    className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow block text-left group"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center shrink-0">
                         <BookOpen className="w-5 h-5 text-primary-600" />
                       </div>
+                      <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-primary-500 transition" />
                     </div>
                     <div className="mt-3">
                       <h3 className="font-semibold text-gray-900">{m.name}</h3>
@@ -265,19 +268,14 @@ export default function MinistriosPage() {
                             Aguardando aprovação
                           </span>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleRequestAccess(m.id)}
-                            disabled={requestingId === m.id}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
-                          >
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-primary-600">
                             <UserPlus className="w-4 h-4" />
-                            {requestingId === m.id ? "Enviando..." : "Candidatar-se"}
-                          </button>
+                            Candidatar-se
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -290,6 +288,7 @@ export default function MinistriosPage() {
               key={ministry.id}
               ministry={ministry}
               canCreateMinistry={canCreateMinistry}
+              href={`/ministerios/${ministry.id}`}
               onEdit={handleEdit}
               onDelete={handleDelete}
             />

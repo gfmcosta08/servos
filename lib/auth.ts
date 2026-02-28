@@ -86,15 +86,32 @@ export async function getMinistriesUserCanManage(): Promise<{ id: string; name: 
 // ============================================================
 
 /** Retorna os IDs dos ministérios aos quais o usuário tem acesso.
- *  Para COORDINATOR: união de user_ministries (apenas APPROVED) e ministry_coordinators. */
+ *  Para COORDINATOR: união de user_ministries (apenas APPROVED) e ministry_coordinators.
+ *  Filtra em código para ser resiliente quando coluna status não existe ou vem undefined. */
 export async function getUserMinistryIds(userId: string, role?: string): Promise<string[]> {
   const supabase = await createClient()
-  const { data: um } = await supabase
+  const { data: um, error } = await supabase
     .from('user_ministries')
-    .select('ministry_id')
+    .select('ministry_id, status')
     .eq('user_id', userId)
-    .or('status.eq.APPROVED,status.is.null')
-  const fromUserMinistries = (um ?? []).map((r) => r.ministry_id)
+
+  let fromUserMinistries: string[]
+  if (error) {
+    // Fallback: coluna status pode não existir (migration não aplicada)
+    const { data: um2 } = await supabase
+      .from('user_ministries')
+      .select('ministry_id')
+      .eq('user_id', userId)
+    fromUserMinistries = (um2 ?? []).map((r) => r.ministry_id)
+  } else {
+    fromUserMinistries = (um ?? [])
+      .filter((r) => {
+        const s = (r as { status?: string }).status
+        return s === 'APPROVED' || s === null || s === undefined
+      })
+      .map((r) => r.ministry_id)
+  }
+
   if (role === 'COORDINATOR') {
     const { data: mc } = await supabase
       .from('ministry_coordinators')
@@ -135,10 +152,11 @@ export async function canAccessMinistry(userId: string, ministryId: string): Pro
   }
   const { data: um } = await supabase
     .from('user_ministries')
-    .select('ministry_id')
+    .select('ministry_id, status')
     .eq('user_id', userId)
     .eq('ministry_id', ministryId)
-    .or('status.eq.APPROVED,status.is.null')
     .maybeSingle()
-  return !!um
+  if (!um) return false
+  const s = (um as { status?: string }).status
+  return s === 'APPROVED' || s === null || s === undefined
 }

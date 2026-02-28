@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useSearchParams } from "next/navigation";
 import { getMinistriesAction } from "@/lib/actions/ministries";
 import {
   getServicesByMinistryAction,
@@ -17,6 +17,7 @@ import type { Ministry, Service, ServiceWithTimeSlots } from "@/types/database";
 // Apenas SUPER_ADMIN ou coordenador do ministério (ministry_coordinators) pode gerenciar escalas
 
 export function useEscalas() {
+  const searchParams = useSearchParams()
   const [ministries, setMinistries] = useState<Ministry[]>([]);
   const [selectedMinistry, setSelectedMinistry] = useState<Ministry | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -33,11 +34,38 @@ export function useEscalas() {
     async function init() {
       setLoading(true);
       const result = await getMinistriesAction();
-      if (result.success) setMinistries(result.data ?? []);
+      const data = result.success ? result.data ?? [] : []
+      setMinistries(data)
+      const ministryId = searchParams.get('ministry')
+      if (ministryId && data.length > 0) {
+        const ministry = data.find((m) => m.id === ministryId)
+        if (ministry) {
+          setSelectedMinistry(ministry)
+          setLoadingServices(true)
+          const [servicesResult, canManageResult] = await Promise.all([
+            getServicesByMinistryAction(ministry.id),
+            canManageMinistryScalesAction(ministry.id),
+          ])
+          if (servicesResult.success) setServices(servicesResult.data ?? [])
+          setCanManage(canManageResult)
+          const serviceId = searchParams.get('service')
+          if (serviceId && servicesResult.success && servicesResult.data) {
+            const service = servicesResult.data.find((s) => s.id === serviceId)
+            if (service) {
+              setSelectedService(service)
+              setLoadingDetail(true)
+              const detailResult = await getServiceWithTimeSlotsAction(service.id)
+              if (detailResult.success) setServiceDetail(detailResult.data ?? null)
+              setLoadingDetail(false)
+            }
+          }
+          setLoadingServices(false)
+        }
+      }
       setLoading(false);
     }
     init();
-  }, []);
+  }, [searchParams]);
 
   const loadServices = useCallback(async (ministry: Ministry) => {
     setLoadingServices(true);

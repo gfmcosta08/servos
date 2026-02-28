@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { getAuthenticatedUser } from '@/lib/auth'
+import { getAuthenticatedUser, canAccessMinistry } from '@/lib/auth'
 import type { ActionResult } from '@/types/database'
 
 // ============================================================
@@ -19,13 +19,24 @@ export async function registerVolunteerAction(
 
   const { data: tsr } = await supabase
     .from('time_slot_roles')
-    .select('*, time_slots!inner(parish_id)')
+    .select('*, time_slots!inner(parish_id, service_id)')
     .eq('id', timeSlotRoleId)
     .single()
 
   if (!tsr || (tsr.time_slots as { parish_id: string })?.parish_id !== ctx.parishId) {
     return { success: false, error: 'Vaga não encontrada.' }
   }
+
+  const serviceId = (tsr.time_slots as { service_id?: string })?.service_id
+  if (!serviceId) return { success: false, error: 'Vaga inválida.' }
+  const { data: service } = await supabase
+    .from('services')
+    .select('ministry_id')
+    .eq('id', serviceId)
+    .single()
+  if (!service) return { success: false, error: 'Vaga não encontrada.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, service.ministry_id)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
   const { count } = await supabase
     .from('registrations')
@@ -64,6 +75,30 @@ export async function unregisterVolunteerAction(
   const supabase = await createClient()
   const ctx = await getAuthenticatedUser()
   if (!ctx) return { success: false, error: 'Não autorizado.' }
+
+  const { data: tsr } = await supabase
+    .from('time_slot_roles')
+    .select('time_slot_id')
+    .eq('id', timeSlotRoleId)
+    .single()
+  if (tsr) {
+    const { data: slot } = await supabase
+      .from('time_slots')
+      .select('service_id')
+      .eq('id', tsr.time_slot_id)
+      .single()
+    if (slot) {
+      const { data: svc } = await supabase
+        .from('services')
+        .select('ministry_id')
+        .eq('id', slot.service_id)
+        .single()
+      if (svc) {
+        const canAccess = await canAccessMinistry(ctx.user.id, svc.ministry_id)
+        if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
+      }
+    }
+  }
 
   const { error } = await supabase
     .from('registrations')

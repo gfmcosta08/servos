@@ -21,6 +21,15 @@ Se aparecer "Erro ao criar conta. Tente novamente." ao se candidatar a uma paró
 
 ---
 
+## Migração: múltiplos ministérios por usuário
+
+Para habilitar seleção de múltiplos ministérios no cadastro e regras de acesso restrito:
+
+1. Execute **`scripts/migration-user-ministries.sql`** no Supabase SQL Editor
+2. Depois execute **`scripts/fix-registro-join.sql`** (atualiza o trigger para `ministry_ids`)
+
+---
+
 ## Opção por partes (arquivos separados)
 
 | # | Arquivo | O que faz |
@@ -29,6 +38,7 @@ Se aparecer "Erro ao criar conta. Tente novamente." ao se candidatar a uma paró
 | 2 | `fix-register-trigger.sql` | Corrige erro ao criar conta (requer migration-user-approval antes) |
 | 3 | `migration-ministry-roles.sql` | Funções por ministério (Leitor, Comentador) e vagas por horário |
 | 4 | `migration-coordinator-permissions.sql` | Coordenador por ministério (quem pode criar escalas e horários) |
+| 5 | `migration-user-ministries.sql` | Lista de ministérios por usuário e restrição de acesso |
 
 Abra cada arquivo, selecione todo o conteúdo (Ctrl+A) e copie (Ctrl+C). Cole no Supabase SQL Editor e execute na ordem.
 

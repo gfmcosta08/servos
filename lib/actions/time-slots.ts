@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { getAuthenticatedUser, canManageMinistryScales } from '@/lib/auth'
+import { getAuthenticatedUser, canManageMinistryScales, canAccessMinistry } from '@/lib/auth'
 import type { ActionResult } from '@/types/database'
 
 // ============================================================
@@ -51,6 +51,8 @@ export async function createTimeSlotAction(
     return { success: false, error: 'Serviço não encontrado.' }
   }
 
+  const canAccess = await canAccessMinistry(ctx.user.id, service.ministry_id)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
   const canManage = await canManageMinistryScales(service.ministry_id)
   if (!canManage) {
     return { success: false, error: 'Sem permissão para criar horários neste ministério.' }
@@ -112,6 +114,8 @@ export async function deleteTimeSlotAction(id: string): Promise<ActionResult> {
 
   if (!service) return { success: false, error: 'Serviço não encontrado.' }
 
+  const canAccess = await canAccessMinistry(ctx.user.id, service.ministry_id)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
   const canManage = await canManageMinistryScales(service.ministry_id)
   if (!canManage) {
     return { success: false, error: 'Sem permissão para excluir horários deste ministério.' }

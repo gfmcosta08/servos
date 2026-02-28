@@ -243,8 +243,8 @@ export default function RegisterPage() {
             </div>
             {selectedParishId && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ministério ao qual deseja se candidatar
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ministérios aos quais deseja se candidatar
                 </label>
                 {loadingMinistries ? (
                   <p className="text-sm text-gray-400 py-2">Carregando ministérios...</p>
@@ -253,17 +253,22 @@ export default function RegisterPage() {
                     Nenhum ministério cadastrado. O administrador pode adicionar você depois.
                   </p>
                 ) : (
-                  <select
-                    name="ministry_id"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition bg-white"
-                  >
-                    <option value="">Selecione (opcional)</option>
+                  <div className="space-y-2 p-3 border border-gray-200 rounded-lg bg-gray-50/50 max-h-40 overflow-y-auto">
                     {ministries.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
+                      <label
+                        key={m.id}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-gray-100/80 rounded px-2 py-1.5 -mx-2 -my-1.5"
+                      >
+                        <input
+                          type="checkbox"
+                          name="ministry_ids"
+                          value={m.id}
+                          className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-gray-700">{m.name}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 )}
               </div>
             )}

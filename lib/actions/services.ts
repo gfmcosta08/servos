@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { getAuthenticatedUser, canManageMinistryScales } from '@/lib/auth'
+import { getAuthenticatedUser, canManageMinistryScales, canAccessMinistry } from '@/lib/auth'
 import type {
   ActionResult,
   MinistryRole,
@@ -27,6 +27,10 @@ export async function getServicesByMinistryAction(
   ministryId: string
 ): Promise<ActionResult<Service[]>> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, ministryId)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
   const { data, error } = await supabase
     .from('services')
@@ -51,6 +55,7 @@ export async function getServiceWithTimeSlotsAction(
 ): Promise<ActionResult<ServiceWithTimeSlots>> {
   const supabase = await createClient()
   const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
 
   const { data: service, error: serviceError } = await supabase
     .from('services')
@@ -61,6 +66,10 @@ export async function getServiceWithTimeSlotsAction(
   if (serviceError || !service) {
     return { success: false, error: 'Data não encontrada.' }
   }
+
+  const ministryId = service.ministry_id
+  const canAccess = await canAccessMinistry(ctx.user.id, ministryId)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
   const { data: timeSlots, error: slotsError } = await supabase
     .from('time_slots_with_counts')
@@ -147,6 +156,8 @@ export async function createServiceAction(
   if (!ctx.parishId) return { success: false, error: 'Usuário sem paróquia associada.' }
 
   const ministryId = formData.get('ministry_id') as string
+  const canAccess = await canAccessMinistry(ctx.user.id, ministryId)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
   const canManage = await canManageMinistryScales(ministryId)
   if (!canManage) {
     return { success: false, error: 'Sem permissão para criar escalas neste ministério.' }
@@ -201,6 +212,8 @@ export async function deleteServiceAction(id: string): Promise<ActionResult> {
 
   if (!service) return { success: false, error: 'Data não encontrada.' }
 
+  const canAccess = await canAccessMinistry(ctx.user.id, service.ministry_id)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
   const canManage = await canManageMinistryScales(service.ministry_id)
   if (!canManage) {
     return { success: false, error: 'Sem permissão para excluir escalas deste ministério.' }

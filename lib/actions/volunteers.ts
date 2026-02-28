@@ -129,18 +129,38 @@ export async function getPendingUsersAction(): Promise<ActionResult<UserWithCoor
     .map((u) => (u as User & { ministry_preference_id?: string }).ministry_preference_id)
     .filter(Boolean) as string[]
 
-  const { data: ministries } = prefIds.length > 0
-    ? await supabase.from('ministries').select('id, name').in('id', prefIds)
+  const { data: userMinistries } = userList.length > 0
+    ? await supabase
+        .from('user_ministries')
+        .select('user_id, ministry_id')
+        .in('user_id', userList.map((u) => u.id))
     : { data: [] }
 
+  const userMinistryIds = (userMinistries ?? []).reduce<Record<string, string[]>>(
+    (acc, um) => {
+      if (!acc[um.user_id]) acc[um.user_id] = []
+      acc[um.user_id].push(um.ministry_id)
+      return acc
+    },
+    {}
+  )
+
+  const allMinistryIds = [...new Set((userMinistries ?? []).map((um) => um.ministry_id))]
+  const { data: ministries } = allMinistryIds.length > 0
+    ? await supabase.from('ministries').select('id, name').in('id', allMinistryIds)
+    : { data: [] }
   const ministryMap = new Map((ministries ?? []).map((m) => [m.id, m]))
 
   const result: UserWithCoordinators[] = userList.map((u) => {
     const prefId = (u as User & { ministry_preference_id?: string }).ministry_preference_id
     const pref = prefId ? ministryMap.get(prefId) : null
+    const ministryIds = userMinistryIds[u.id] ?? []
+    const ministryPref = ministryIds.length > 0
+      ? ministryMap.get(ministryIds[0]) ?? pref
+      : pref
     return {
       ...u,
-      ministry_preference: pref ?? null,
+      ministry_preference: ministryPref ?? null,
       coordinator_of: [],
     }
   })
@@ -148,8 +168,10 @@ export async function getPendingUsersAction(): Promise<ActionResult<UserWithCoor
   const filtered = isAdmin
     ? result
     : result.filter((u) => {
-        const ministryPrefId = u.ministry_preference?.id
-        return ctx.role === 'COORDINATOR' && ministryPrefId && coordMinistries.some((m) => m.id === ministryPrefId)
+        const ids = userMinistryIds[u.id] ?? []
+        const prefId = (u as User & { ministry_preference_id?: string }).ministry_preference_id
+        const checkIds = ids.length > 0 ? ids : (prefId ? [prefId] : [])
+        return ctx.role === 'COORDINATOR' && checkIds.some((id) => coordMinistries.some((m) => m.id === id))
       })
 
   return { success: true, data: filtered }
@@ -198,7 +220,11 @@ export async function approveUserAction(
 
   if (asCoord && ministryId) {
     await supabase.from('ministry_coordinators').insert({ user_id: userId, ministry_id: ministryId })
+    // Vínculo exclusivo: user_ministries apenas com este ministério
+    await supabase.from('user_ministries').delete().eq('user_id', userId)
+    await supabase.from('user_ministries').insert({ user_id: userId, ministry_id: ministryId })
   }
+  // Voluntário: user_ministries já foi populado pelo trigger no registro (ministry_ids)
 
   revalidatePath('/voluntarios')
   revalidatePath('/dashboard')
@@ -266,6 +292,9 @@ export async function addMinistryCoordinatorAction(
     }
     return { success: false, error: 'Erro ao adicionar coordenador.' }
   }
+
+  await supabase.from('user_ministries').insert({ user_id: userId, ministry_id: ministryId })
+  // Ignora erro 23505 (duplicata) se já existir
 
   revalidatePath('/voluntarios')
   return { success: true }

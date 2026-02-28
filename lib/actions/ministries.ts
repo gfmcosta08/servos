@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { getAuthenticatedUser, canManageMinistryScales } from '@/lib/auth'
+import { getAuthenticatedUser, canManageMinistryScales, getUserMinistryIds, canAccessMinistry } from '@/lib/auth'
 import type { ActionResult, Ministry, MinistryRole } from '@/types/database'
 
 // ============================================================
@@ -10,8 +10,12 @@ import type { ActionResult, Ministry, MinistryRole } from '@/types/database'
 // ============================================================
 
 // Listar ministérios da paróquia do usuário logado
+// VOLUNTEER e COORDINATOR: filtrados por user_ministries (restrição quando length === 1)
+// SUPER_ADMIN e ADMIN_PARISH: todos os ministérios da paróquia
 export async function getMinistriesAction(): Promise<ActionResult<Ministry[]>> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
 
   const { data, error } = await supabase
     .from('ministries')
@@ -22,7 +26,16 @@ export async function getMinistriesAction(): Promise<ActionResult<Ministry[]>> {
     return { success: false, error: 'Erro ao buscar ministérios.' }
   }
 
-  return { success: true, data: data ?? [] }
+  let ministries = data ?? []
+
+  if (['VOLUNTEER', 'COORDINATOR'].includes(ctx.role)) {
+    const allowedIds = await getUserMinistryIds(ctx.user.id)
+    if (allowedIds.length > 0) {
+      ministries = ministries.filter((m) => allowedIds.includes(m.id))
+    }
+  }
+
+  return { success: true, data: ministries }
 }
 
 // Criar ministério
@@ -74,6 +87,10 @@ export async function updateMinistryAction(
   formData: FormData
 ): Promise<ActionResult<Ministry>> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, id)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
   const name = formData.get('name') as string
   const description = formData.get('description') as string | null
@@ -104,6 +121,10 @@ export async function updateMinistryAction(
 // Excluir ministério (cascade: apaga datas, horários e inscrições)
 export async function deleteMinistryAction(id: string): Promise<ActionResult> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, id)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
   const { error } = await supabase
     .from('ministries')
@@ -127,6 +148,10 @@ export async function getMinistryRolesAction(
   ministryId: string
 ): Promise<ActionResult<MinistryRole[]>> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, ministryId)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
   const { data, error } = await supabase
     .from('ministry_roles')
@@ -148,6 +173,8 @@ export async function createMinistryRoleAction(
   const supabase = await createClient()
   const ctx = await getAuthenticatedUser()
   if (!ctx) return { success: false, error: 'Não autorizado.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, ministryId)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
   const canManage = await canManageMinistryScales(ministryId)
   if (!canManage) return { success: false, error: 'Sem permissão para adicionar funções neste ministério.' }
 
@@ -187,6 +214,17 @@ export async function deleteMinistryRoleAction(
   roleId: string
 ): Promise<ActionResult> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+
+  const { data: role } = await supabase
+    .from('ministry_roles')
+    .select('ministry_id')
+    .eq('id', roleId)
+    .single()
+  if (!role) return { success: false, error: 'Função não encontrada.' }
+  const canAccess = await canAccessMinistry(ctx.user.id, role.ministry_id)
+  if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
   const { error } = await supabase
     .from('ministry_roles')

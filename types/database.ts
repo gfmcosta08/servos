@@ -53,6 +53,11 @@ export interface MinistryCoordinator {
   created_at: string
 }
 
+export interface UserMinistry {
+  user_id: string
+  ministry_id: string
+}
+
 export interface Service {
   id: string
   ministry_id: string
@@ -264,6 +269,11 @@ export type Database = {
       registrations: {
         Row: Registration
         Insert: Omit<Registration, 'id' | 'created_at'>
+        Update: never
+      }
+      user_ministries: {
+        Row: UserMinistry
+        Insert: UserMinistry
         Update: never
       }
     }

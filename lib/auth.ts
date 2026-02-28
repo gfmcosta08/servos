@@ -80,3 +80,44 @@ export async function getMinistriesUserCanManage(): Promise<{ id: string; name: 
   }
   return []
 }
+
+// ============================================================
+// Helpers: user_ministries (lista de ministérios permitidos)
+// ============================================================
+
+/** Retorna os IDs dos ministérios aos quais o usuário tem acesso */
+export async function getUserMinistryIds(userId: string): Promise<string[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('user_ministries')
+    .select('ministry_id')
+    .eq('user_id', userId)
+  return (data ?? []).map((r) => r.ministry_id)
+}
+
+/** Verifica se o usuário tem acesso ao ministério (SUPER_ADMIN, ADMIN_PARISH ou user_ministries) */
+export async function canAccessMinistry(userId: string, ministryId: string): Promise<boolean> {
+  const supabase = await createClient()
+  const { data: user } = await supabase
+    .from('users')
+    .select('role, parish_id')
+    .eq('id', userId)
+    .single()
+  if (!user) return false
+  if (user.role === 'SUPER_ADMIN') return true
+  if (user.role === 'ADMIN_PARISH' && user.parish_id) {
+    const { data: ministry } = await supabase
+      .from('ministries')
+      .select('parish_id')
+      .eq('id', ministryId)
+      .single()
+    return ministry?.parish_id === user.parish_id
+  }
+  const { data: um } = await supabase
+    .from('user_ministries')
+    .select('ministry_id')
+    .eq('user_id', userId)
+    .eq('ministry_id', ministryId)
+    .maybeSingle()
+  return !!um
+}

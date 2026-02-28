@@ -117,7 +117,8 @@ export async function registerJoinParishAction(
   const email = formData.get('email') as string
   const password = formData.get('password') as string
   const parishId = formData.get('parish_id') as string
-  const ministryId = formData.get('ministry_id') as string | null
+  const ministryIdsRaw = formData.getAll('ministry_ids') as string[]
+  const ministryIds = ministryIdsRaw.filter((id) => id && id.trim() !== '')
 
   if (!name || !email || !password || !parishId) {
     return { success: false, error: 'Preencha todos os campos.' }
@@ -148,7 +149,7 @@ export async function registerJoinParishAction(
         role: 'VOLUNTEER',
         parish_id: parishId,
         status: 'PENDING',
-        ...(ministryId && { ministry_id: ministryId }),
+        ...(ministryIds.length > 0 && { ministry_ids: ministryIds }),
       },
     },
   })
@@ -156,6 +157,16 @@ export async function registerJoinParishAction(
   if (authError) {
     if (authError.message.includes('already registered')) {
       return { success: false, error: 'Este email já está cadastrado.' }
+    }
+    if (
+      authError.message.toLowerCase().includes('email rate limit exceeded') ||
+      authError.message.toLowerCase().includes('rate limit')
+    ) {
+      return {
+        success: false,
+        error:
+          'Limite de envio de e-mails atingido. Aguarde cerca de 1 hora ou configure SMTP no Supabase para produção.',
+      }
     }
     console.error('[registerJoinParish]', authError.message)
     const showDebug =

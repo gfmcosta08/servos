@@ -18,8 +18,11 @@ import {
   excludeUserAction,
   confirmUserEmailManuallyAction,
   confirmUserEmailByEmailAction,
+  approveUserByEmailAction,
+  fixUserParishByEmailAction,
 } from "@/lib/actions/volunteers";
 import { getMinistriesAction } from "@/lib/actions/ministries";
+import { getParishesAction, getMinistriesByParishAction } from "@/lib/actions/auth";
 import toast from "react-hot-toast";
 import type { UserRole } from "@/types/database";
 import type { UserWithCoordinators } from "@/lib/actions/volunteers";
@@ -57,6 +60,14 @@ export default function VoluntariosPage() {
   const [confirmingEmailId, setConfirmingEmailId] = useState<string | null>(null);
   const [confirmEmailByAddress, setConfirmEmailByAddress] = useState("");
   const [confirmingEmailByAddress, setConfirmingEmailByAddress] = useState(false);
+  const [approveEmailByAddress, setApproveEmailByAddress] = useState("");
+  const [approvingEmailByAddress, setApprovingEmailByAddress] = useState(false);
+  const [fixEmail, setFixEmail] = useState("");
+  const [fixParishId, setFixParishId] = useState("");
+  const [fixMinistryId, setFixMinistryId] = useState("");
+  const [fixParishes, setFixParishes] = useState<{ id: string; name: string; city: string; state: string }[]>([]);
+  const [fixMinistries, setFixMinistries] = useState<{ id: string; name: string }[]>([]);
+  const [fixingParish, setFixingParish] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -89,6 +100,27 @@ export default function VoluntariosPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (currentUserRole === "SUPER_ADMIN") {
+      getParishesAction().then((r) => {
+        if (r.success && r.data) setFixParishes(r.data);
+      });
+    }
+  }, [currentUserRole]);
+
+  useEffect(() => {
+    if (fixParishId) {
+      getMinistriesByParishAction(fixParishId).then((r) => {
+        if (r.success && r.data) setFixMinistries(r.data);
+        else setFixMinistries([]);
+      });
+      setFixMinistryId("");
+    } else {
+      setFixMinistries([]);
+      setFixMinistryId("");
+    }
+  }, [fixParishId]);
 
   useEffect(() => {
     if (currentUserRole === "VOLUNTEER") {
@@ -175,6 +207,36 @@ export default function VoluntariosPage() {
       toast.error(result.error ?? "Erro ao confirmar email.");
     }
     setConfirmingEmailByAddress(false);
+  }
+
+  async function handleApproveByEmail() {
+    if (!approveEmailByAddress.trim()) return;
+    setApprovingEmailByAddress(true);
+    const result = await approveUserByEmailAction(approveEmailByAddress.trim());
+    if (result.success) {
+      toast.success("Usuário aprovado. A pessoa já pode acessar o app.");
+      setApproveEmailByAddress("");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro ao aprovar.");
+    }
+    setApprovingEmailByAddress(false);
+  }
+
+  async function handleFixParish() {
+    if (!fixEmail.trim() || !fixParishId || !fixMinistryId) return;
+    setFixingParish(true);
+    const result = await fixUserParishByEmailAction(fixEmail.trim(), fixParishId, fixMinistryId);
+    if (result.success) {
+      toast.success("Vínculo corrigido. A pessoa já pode ver ministérios e escalas.");
+      setFixEmail("");
+      setFixParishId("");
+      setFixMinistryId("");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro ao corrigir.");
+    }
+    setFixingParish(false);
   }
 
   async function handleApproveMinistryRequest(userId: string, ministryId: string) {
@@ -276,6 +338,89 @@ export default function VoluntariosPage() {
             >
               {confirmingEmailByAddress ? "Confirmando..." : "Confirmar email"}
             </button>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+              <UserCheck className="w-4 h-4" />
+              Aprovar por email
+            </h4>
+            <p className="text-xs text-slate-600 mb-3">
+              Use quando a pessoa vê &quot;Conta não aprovada&quot; (email já confirmado, mas status pendente).
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="email"
+                placeholder="email@exemplo.com"
+                value={approveEmailByAddress}
+                onChange={(e) => setApproveEmailByAddress(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleApproveByEmail()}
+                className="flex-1 min-w-[200px] px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleApproveByEmail}
+                disabled={!approveEmailByAddress.trim() || approvingEmailByAddress}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              >
+              {approvingEmailByAddress ? "Aprovando..." : "Aprovar"}
+            </button>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+              <UserCheck className="w-4 h-4" />
+              Corrigir vínculo paróquia/ministério
+            </h4>
+            <p className="text-xs text-slate-600 mb-3">
+              Use quando o usuário não vê ministérios nem escalas (parish_id null no cadastro).
+            </p>
+            <div className="flex flex-wrap gap-2 items-end">
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs text-slate-500 mb-1">Email</label>
+                <input
+                  type="email"
+                  placeholder="email@exemplo.com"
+                  value={fixEmail}
+                  onChange={(e) => setFixEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                />
+              </div>
+              <div className="min-w-[160px]">
+                <label className="block text-xs text-slate-500 mb-1">Paróquia</label>
+                <select
+                  value={fixParishId}
+                  onChange={(e) => setFixParishId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                >
+                  <option value="">Selecione</option>
+                  {fixParishes.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-[160px]">
+                <label className="block text-xs text-slate-500 mb-1">Ministério</label>
+                <select
+                  value={fixMinistryId}
+                  onChange={(e) => setFixMinistryId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  disabled={!fixParishId}
+                >
+                  <option value="">Selecione</option>
+                  {fixMinistries.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={handleFixParish}
+                disabled={!fixEmail.trim() || !fixParishId || !fixMinistryId || fixingParish}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {fixingParish ? "Corrigindo..." : "Corrigir"}
+              </button>
+            </div>
           </div>
         </div>
       )}

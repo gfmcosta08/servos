@@ -632,6 +632,106 @@ export async function confirmUserEmailByEmailAction(email: string): Promise<Acti
   return { success: true }
 }
 
+/**
+ * Aprova usuário por email (quando não aparece na lista de pendentes).
+ * Resolve o erro "Conta não aprovada" para usuários que já confirmaram o email.
+ */
+export async function approveUserByEmailAction(email: string): Promise<ActionResult> {
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (ctx.role !== 'SUPER_ADMIN') {
+    return { success: false, error: 'Apenas Super Admin pode aprovar por email.' }
+  }
+
+  const trimmed = email?.trim().toLowerCase()
+  if (!trimmed) return { success: false, error: 'Informe o email.' }
+
+  const adminClient = createAdminClient()
+  const { data: user, error: findError } = await adminClient
+    .from('users')
+    .select('id, status')
+    .ilike('email', trimmed)
+    .maybeSingle()
+
+  if (findError || !user) {
+    return {
+      success: false,
+      error: 'Usuário não encontrado. Verifique se o email está correto.',
+    }
+  }
+
+  if ((user as { status?: string }).status === 'APPROVED') {
+    return { success: false, error: 'Usuário já está aprovado.' }
+  }
+
+  const { error: updateError } = await adminClient
+    .from('users')
+    .update({ status: 'APPROVED' })
+    .eq('id', user.id)
+
+  if (updateError) {
+    console.error('[approveUserByEmailAction]', updateError.message)
+    return { success: false, error: 'Erro ao aprovar.' }
+  }
+
+  revalidatePath('/voluntarios')
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+/**
+ * Corrige vínculo de usuário sem paróquia/ministério (parish_id null).
+ * Útil quando o trigger falhou no registro.
+ */
+export async function fixUserParishByEmailAction(
+  email: string,
+  parishId: string,
+  ministryId: string
+): Promise<ActionResult> {
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (ctx.role !== 'SUPER_ADMIN') {
+    return { success: false, error: 'Apenas Super Admin pode corrigir vínculos.' }
+  }
+
+  const trimmed = email?.trim().toLowerCase()
+  if (!trimmed || !parishId || !ministryId) {
+    return { success: false, error: 'Informe email, paróquia e ministério.' }
+  }
+
+  const adminClient = createAdminClient()
+
+  const { data: user, error: findError } = await adminClient
+    .from('users')
+    .select('id')
+    .ilike('email', trimmed)
+    .maybeSingle()
+
+  if (findError || !user) {
+    return { success: false, error: 'Usuário não encontrado.' }
+  }
+
+  const { error: updateError } = await adminClient
+    .from('users')
+    .update({ parish_id: parishId, ministry_preference_id: ministryId })
+    .eq('id', user.id)
+
+  if (updateError) {
+    console.error('[fixUserParishByEmailAction]', updateError.message)
+    return { success: false, error: 'Erro ao atualizar usuário.' }
+  }
+
+  await adminClient.from('user_ministries').delete().eq('user_id', user.id)
+  await adminClient.from('user_ministries').insert({
+    user_id: user.id,
+    ministry_id: ministryId,
+  })
+
+  revalidatePath('/voluntarios')
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
 export async function getMinistriesUserCanManageAction(): Promise<
   ActionResult<{ id: string; name: string }[]>
 > {

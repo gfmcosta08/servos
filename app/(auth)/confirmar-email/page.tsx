@@ -18,8 +18,10 @@ export default function ConfirmarEmailPage() {
       </p>
 
       <div className="bg-primary-50 rounded-xl px-5 py-4 text-sm text-primary-700 mb-6">
-        <strong>Não encontrou o e-mail?</strong> Verifique também a pasta de
-        spam ou lixo eletrônico.
+        <strong>Não encontrou o e-mail?</strong> Verifique a pasta de spam ou
+        lixo eletrônico. Se não receber em 30 minutos, o provedor de email do
+        Supabase pode estar com limite atingido — configure SMTP customizado no
+        Supabase para produção (veja README).
       </div>
 
       <p className="text-sm text-gray-500">

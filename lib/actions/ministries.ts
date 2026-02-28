@@ -93,7 +93,13 @@ export async function requestMinistryAccessAction(ministryId: string): Promise<A
 
   if (error) {
     if (error.code === '23505') return { success: false, error: 'Solicitação já enviada.' }
-    return { success: false, error: 'Erro ao enviar solicitação.' }
+    const showDebug =
+      process.env.NODE_ENV === 'development' ||
+      process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true'
+    return {
+      success: false,
+      error: showDebug ? `[DEBUG] ${error.message}` : 'Erro ao enviar solicitação.',
+    }
   }
 
   revalidatePath('/ministerios')

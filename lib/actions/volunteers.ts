@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { getAuthenticatedUser } from '@/lib/auth'
 import { canManageMinistryScales, getMinistriesUserCanManage } from '@/lib/auth'
 import type { ActionResult, User } from '@/types/database'
@@ -515,15 +515,23 @@ export async function excludeUserAction(userId: string): Promise<ActionResult> {
     return { success: false, error: 'Apenas Super Admin pode excluir usuários.' }
   }
 
-  const { error } = await supabase
-    .from('users')
-    .update({ status: 'REJECTED', parish_id: null })
-    .eq('id', userId)
+  const adminClient = createAdminClient()
 
-  if (error) return { success: false, error: 'Erro ao excluir usuário.' }
+  // Marcar como excluído (fallback se deleteUser falhar)
+  await adminClient.from('users').update({ status: 'REJECTED', parish_id: null }).eq('id', userId)
+  await adminClient.from('user_ministries').delete().eq('user_id', userId)
+  await adminClient.from('ministry_coordinators').delete().eq('user_id', userId)
 
-  await supabase.from('user_ministries').delete().eq('user_id', userId)
-  await supabase.from('ministry_coordinators').delete().eq('user_id', userId)
+  // Deletar de auth.users para permitir recadastro com o mesmo email
+  const { error: authError } = await adminClient.auth.admin.deleteUser(userId)
+
+  if (authError) {
+    console.error('[excludeUserAction] auth.admin.deleteUser:', authError.message)
+    return {
+      success: false,
+      error: 'Usuário marcado como excluído, mas não foi possível liberar o email para novo cadastro. Verifique SUPABASE_SERVICE_ROLE_KEY.',
+    }
+  }
 
   revalidatePath('/voluntarios')
   revalidatePath('/dashboard')

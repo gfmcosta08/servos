@@ -183,6 +183,20 @@ NEXT_PUBLIC_SITE_URL
 
 > **NEXT_PUBLIC_SITE_URL** deve apontar para a URL do seu deploy (ex: `https://seu-app.vercel.app`). Necessário para links de confirmação de email e recuperação de senha.
 
+### Configurar SMTP (emails de confirmação e recuperação)
+
+O Supabase envia emails de confirmação e recuperação de senha. O provedor padrão tem **limite baixo** (~3 emails/hora no plano free) e pode cair em spam. Para produção, configure SMTP customizado:
+
+1. Acesse **Supabase Dashboard** → **Project Settings** → **Auth**
+2. Em **SMTP Settings**, ative "Enable Custom SMTP"
+3. Configure com um provedor (Resend, SendGrid, Mailgun, etc.):
+   - **Host:** smtp do provedor
+   - **Port:** 587 (TLS) ou 465 (SSL)
+   - **User/Password:** credenciais do provedor
+4. Salve as alterações
+
+**Alternativa para testes:** Em Authentication → Providers → Email, desative temporariamente "Confirm email" para permitir login sem confirmação.
+
 ---
 
 ## Próximas funcionalidades (roadmap)

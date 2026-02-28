@@ -38,6 +38,20 @@ export async function registerVolunteerAction(
   const canAccess = await canAccessMinistry(ctx.user.id, service.ministry_id)
   if (!canAccess) return { success: false, error: 'Acesso negado a este ministério.' }
 
+  const timeSlotId = tsr.time_slot_id
+  const { data: existingInSlot } = await supabase
+    .from('registrations')
+    .select('id')
+    .eq('user_id', ctx.user.id)
+    .eq('time_slot_id', timeSlotId)
+    .maybeSingle()
+  if (existingInSlot) {
+    return {
+      success: false,
+      error: 'Você já está inscrito em outro horário neste bloco. Escolha apenas uma função por faixa de horário.',
+    }
+  }
+
   const { count } = await supabase
     .from('registrations')
     .select('*', { count: 'exact', head: true })
@@ -46,8 +60,6 @@ export async function registerVolunteerAction(
   if ((count ?? 0) >= tsr.quantity) {
     return { success: false, error: 'Não há vagas disponíveis para esta função.' }
   }
-
-  const timeSlotId = tsr.time_slot_id
 
   const { error } = await supabase
     .from('registrations')

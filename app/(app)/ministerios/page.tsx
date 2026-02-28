@@ -6,6 +6,7 @@ import {
   getMinistriesAction,
   deleteMinistryAction,
 } from "@/lib/actions/ministries";
+import { getCurrentUserAction } from "@/lib/actions/dashboard";
 import { MinistryModal } from "@/components/ministerios/ministry-modal";
 import toast from "react-hot-toast";
 import type { Ministry } from "@/types/database";
@@ -15,13 +16,20 @@ export default function MinistriosPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingMinistry, setEditingMinistry] = useState<Ministry | undefined>();
+  const [canCreateMinistry, setCanCreateMinistry] = useState(false);
 
   const loadMinistries = useCallback(async () => {
     setLoading(true);
-    const result = await getMinistriesAction();
+    const [result, currentUser] = await Promise.all([
+      getMinistriesAction(),
+      getCurrentUserAction(),
+    ]);
     if (result.success) {
       setMinistries(result.data ?? []);
     }
+    setCanCreateMinistry(
+      currentUser?.role !== undefined && currentUser.role !== "VOLUNTEER"
+    );
     setLoading(false);
   }, []);
 
@@ -77,13 +85,15 @@ export default function MinistriosPage() {
             Gerencie os ministérios da sua paróquia.
           </p>
         </div>
-        <button
-          onClick={handleNew}
-          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition"
-        >
-          <Plus className="w-4 h-4" />
-          Criar ministério
-        </button>
+        {canCreateMinistry && (
+          <button
+            onClick={handleNew}
+            className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition"
+          >
+            <Plus className="w-4 h-4" />
+            Criar ministério
+          </button>
+        )}
       </div>
 
       {/* Lista */}
@@ -108,15 +118,19 @@ export default function MinistriosPage() {
             Nenhum ministério ainda
           </h3>
           <p className="text-gray-400 text-sm mb-4">
-            Crie o primeiro ministério da sua paróquia.
+            {canCreateMinistry
+              ? "Crie o primeiro ministério da sua paróquia."
+              : "Nenhum ministério cadastrado ainda."}
           </p>
-          <button
-            onClick={handleNew}
-            className="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
-          >
-            <Plus className="w-4 h-4" />
-            Criar ministério
-          </button>
+          {canCreateMinistry && (
+            <button
+              onClick={handleNew}
+              className="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+            >
+              <Plus className="w-4 h-4" />
+              Criar ministério
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -129,22 +143,24 @@ export default function MinistriosPage() {
                 <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center shrink-0">
                   <BookOpen className="w-5 h-5 text-primary-600" />
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => handleEdit(ministry)}
-                    className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition"
-                    title="Editar"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(ministry)}
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                    title="Excluir"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {canCreateMinistry && (
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleEdit(ministry)}
+                      className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition"
+                      title="Editar"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(ministry)}
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                      title="Excluir"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="mt-3">
                 <h3 className="font-semibold text-gray-900">{ministry.name}</h3>

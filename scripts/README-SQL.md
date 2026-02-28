@@ -30,6 +30,12 @@ Para habilitar seleção de múltiplos ministérios no cadastro e regras de aces
 
 ---
 
+## Coordenador não consegue se inscrever em vagas?
+
+Execute **`scripts/fix-coordinator-access.sql`** no Supabase SQL Editor. Isso garante que coordenadores tenham acesso aos ministérios que coordenam (via `ministry_coordinators`) mesmo quando `user_ministries` estiver desatualizado.
+
+---
+
 ## Opção por partes (arquivos separados)
 
 | # | Arquivo | O que faz |
@@ -39,6 +45,7 @@ Para habilitar seleção de múltiplos ministérios no cadastro e regras de aces
 | 3 | `migration-ministry-roles.sql` | Funções por ministério (Leitor, Comentador) e vagas por horário |
 | 4 | `migration-coordinator-permissions.sql` | Coordenador por ministério (quem pode criar escalas e horários) |
 | 5 | `migration-user-ministries.sql` | Lista de ministérios por usuário e restrição de acesso |
+| 6 | `fix-coordinator-access.sql` | Opcional: se coordenador não consegue se inscrever em vagas |
 
 Abra cada arquivo, selecione todo o conteúdo (Ctrl+A) e copie (Ctrl+C). Cole no Supabase SQL Editor e execute na ordem.
 

@@ -85,17 +85,27 @@ export async function getMinistriesUserCanManage(): Promise<{ id: string; name: 
 // Helpers: user_ministries (lista de ministérios permitidos)
 // ============================================================
 
-/** Retorna os IDs dos ministérios aos quais o usuário tem acesso */
-export async function getUserMinistryIds(userId: string): Promise<string[]> {
+/** Retorna os IDs dos ministérios aos quais o usuário tem acesso.
+ *  Para COORDINATOR: união de user_ministries e ministry_coordinators. */
+export async function getUserMinistryIds(userId: string, role?: string): Promise<string[]> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data: um } = await supabase
     .from('user_ministries')
     .select('ministry_id')
     .eq('user_id', userId)
-  return (data ?? []).map((r) => r.ministry_id)
+  const fromUserMinistries = (um ?? []).map((r) => r.ministry_id)
+  if (role === 'COORDINATOR') {
+    const { data: mc } = await supabase
+      .from('ministry_coordinators')
+      .select('ministry_id')
+      .eq('user_id', userId)
+    const fromCoords = (mc ?? []).map((r) => r.ministry_id)
+    return [...new Set([...fromUserMinistries, ...fromCoords])]
+  }
+  return fromUserMinistries
 }
 
-/** Verifica se o usuário tem acesso ao ministério (SUPER_ADMIN, ADMIN_PARISH ou user_ministries) */
+/** Verifica se o usuário tem acesso ao ministério (SUPER_ADMIN, ADMIN_PARISH, user_ministries ou ministry_coordinators) */
 export async function canAccessMinistry(userId: string, ministryId: string): Promise<boolean> {
   const supabase = await createClient()
   const { data: user } = await supabase
@@ -112,6 +122,15 @@ export async function canAccessMinistry(userId: string, ministryId: string): Pro
       .eq('id', ministryId)
       .single()
     return ministry?.parish_id === user.parish_id
+  }
+  if (user.role === 'COORDINATOR') {
+    const { data: mc } = await supabase
+      .from('ministry_coordinators')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('ministry_id', ministryId)
+      .maybeSingle()
+    if (mc) return true
   }
   const { data: um } = await supabase
     .from('user_ministries')

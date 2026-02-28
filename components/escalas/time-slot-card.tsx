@@ -86,15 +86,13 @@ export function TimeSlotCard({ slot, canManage, onDeleted, onRegistrationChange 
                 {tsr.filled}/{tsr.quantity} vagas
               </p>
             </div>
-            {!canManage && (
-              <RegistrationToggle
-                timeSlotRoleId={tsr.id}
-                roleName={tsr.ministry_role.name}
-                isRegistered={userRegisteredRoleIds.includes(tsr.id)}
-                isFull={tsr.available <= 0}
-                onToggle={(v) => handleToggle(tsr.id, v)}
-              />
-            )}
+            <RegistrationToggle
+              timeSlotRoleId={tsr.id}
+              roleName={tsr.ministry_role.name}
+              isRegistered={userRegisteredRoleIds.includes(tsr.id)}
+              isFull={tsr.available <= 0}
+              onToggle={(v) => handleToggle(tsr.id, v)}
+            />
           </div>
         ))}
 

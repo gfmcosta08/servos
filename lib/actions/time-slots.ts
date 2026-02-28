@@ -73,8 +73,18 @@ export async function createTimeSlotAction(
     return { success: false, error: 'Erro ao criar horário.' }
   }
 
+  // Garantir isolamento: cada ministry_role deve pertencer ao ministério do service
   for (const role of roles) {
     if (role.quantity < 1) continue
+    const { data: mr } = await supabase
+      .from('ministry_roles')
+      .select('ministry_id')
+      .eq('id', role.ministry_role_id)
+      .single()
+    if (!mr || mr.ministry_id !== service.ministry_id) {
+      await supabase.from('time_slots').delete().eq('id', timeSlot.id)
+      return { success: false, error: 'Função não pertence a este ministério. Use apenas funções do ministério da escala.' }
+    }
     const { error: tsrError } = await supabase
       .from('time_slot_roles')
       .insert({

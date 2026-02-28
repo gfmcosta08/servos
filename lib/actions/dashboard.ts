@@ -74,14 +74,17 @@ export async function getDashboardStatsAction(): Promise<ActionResult<DashboardS
 
 export async function getUpcomingServicesAction(): Promise<ActionResult<UpcomingService[]>> {
   const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
 
   const today = new Date().toISOString().split('T')[0]
 
-  const { data: services, error } = await supabase
+  let query = supabase
     .from('services')
     .select(`
       id,
       date,
+      ministry_id,
       ministries(name),
       time_slots(
         id,
@@ -90,7 +93,18 @@ export async function getUpcomingServicesAction(): Promise<ActionResult<Upcoming
     `)
     .gte('date', today)
     .order('date', { ascending: true })
-    .limit(5)
+
+  // Isolamento por ministério: VOLUNTEER e COORDINATOR veem apenas serviços dos seus ministérios
+  if (['VOLUNTEER', 'COORDINATOR'].includes(ctx.role)) {
+    const { getUserMinistryIds } = await import('@/lib/auth')
+    const ministryIds = await getUserMinistryIds(ctx.user.id, ctx.role)
+    if (ministryIds.length === 0) {
+      return { success: true, data: [] }
+    }
+    query = query.in('ministry_id', ministryIds)
+  }
+
+  const { data: services, error } = await query.limit(10)
 
   const serviceIds = (services ?? []).map((s: { id: string }) => s.id)
   const { data: slotCounts } =

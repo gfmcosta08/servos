@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getPendingCountAction } from "@/lib/actions/dashboard";
 import { AppShell } from "@/components/layout/app-shell";
 
 export default async function AppLayout({
@@ -9,7 +10,6 @@ export default async function AppLayout({
 }) {
   const supabase = await createClient();
 
-  // Verificar autenticação
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -18,12 +18,10 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  // Buscar dados do usuário com paróquia
-  const { data: rawUserData } = await supabase
-    .from("users")
-    .select("*, parishes(name)")
-    .eq("id", user.id)
-    .single();
+  const [{ data: rawUserData }, pendingCount] = await Promise.all([
+    supabase.from("users").select("*, parishes(name)").eq("id", user.id).single(),
+    getPendingCountAction(),
+  ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userData = rawUserData as any;
@@ -34,6 +32,7 @@ export default async function AppLayout({
       parishName={parishName}
       userName={userData?.name}
       userRole={userData?.role}
+      pendingCount={pendingCount}
     >
       {children}
     </AppShell>

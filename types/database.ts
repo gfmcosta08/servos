@@ -4,6 +4,8 @@
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN_PARISH' | 'COORDINATOR' | 'VOLUNTEER'
 
+export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
 // ============================================================
 // Entidades do Banco
 // ============================================================
@@ -24,6 +26,7 @@ export interface User {
   role: UserRole
   parish_id: string | null
   ministry_preference_id?: string | null
+  status?: UserStatus
   created_at: string
 }
 
@@ -191,6 +194,7 @@ export interface DashboardStats {
   total_ministries: number
   upcoming_services: number
   open_slots: number
+  pending_approvals: number
 }
 
 export interface UpcomingService {

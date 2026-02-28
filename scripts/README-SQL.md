@@ -1,26 +1,36 @@
 # Scripts SQL para Supabase
 
-Execute no **Supabase → SQL Editor** na ordem abaixo. Copie o conteúdo de cada arquivo e cole no editor, depois clique em **Run**.
+Execute no **Supabase → SQL Editor**.
 
 ---
 
-## Ordem de execução
+## Erro ao criar conta (entrar em paróquia)?
+
+Se aparecer "Erro ao criar conta. Tente novamente." ao se candidatar a uma paróquia existente, execute **`scripts/fix-registro-join.sql`** no Supabase SQL Editor.
+
+---
+
+## Opção rápida (recomendado)
+
+**Um único arquivo com tudo:**
+
+1. Abra `scripts/EXECUTAR-NO-SUPABASE.sql`
+2. Selecione todo o conteúdo (Ctrl+A) e copie (Ctrl+C)
+3. Cole no Supabase → SQL Editor
+4. Clique em **Run**
+
+---
+
+## Opção por partes (arquivos separados)
 
 | # | Arquivo | O que faz |
 |---|---------|-----------|
-| 1 | `fix-register-trigger.sql` | Corrige erro ao criar conta ("Database error saving new user") |
-| 2 | `migration-ministry-roles.sql` | Funções por ministério (Leitor, Comentador) e vagas por horário |
-| 3 | `migration-coordinator-permissions.sql` | Coordenador por ministério (quem pode criar escalas e horários) |
+| 1 | `migration-user-approval.sql` | Fluxo de aprovação: status PENDING/APPROVED/REJECTED |
+| 2 | `fix-register-trigger.sql` | Corrige erro ao criar conta (requer migration-user-approval antes) |
+| 3 | `migration-ministry-roles.sql` | Funções por ministério (Leitor, Comentador) e vagas por horário |
+| 4 | `migration-coordinator-permissions.sql` | Coordenador por ministério (quem pode criar escalas e horários) |
 
----
-
-## Onde estão os arquivos
-
-- `scripts/fix-register-trigger.sql`
-- `scripts/migration-ministry-roles.sql`
-- `scripts/migration-coordinator-permissions.sql`
-
-Abra cada arquivo no VS Code/Cursor, selecione todo o conteúdo (Ctrl+A) e copie (Ctrl+C). Cole no Supabase SQL Editor e execute.
+Abra cada arquivo, selecione todo o conteúdo (Ctrl+A) e copie (Ctrl+C). Cole no Supabase SQL Editor e execute na ordem.
 
 ---
 

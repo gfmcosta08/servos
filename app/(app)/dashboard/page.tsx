@@ -1,4 +1,5 @@
-import { Users, BookOpen, CalendarDays, Clock } from "lucide-react";
+import Link from "next/link";
+import { Users, BookOpen, CalendarDays, Clock, UserCheck } from "lucide-react";
 import {
   getDashboardStatsAction,
   getUpcomingServicesAction,
@@ -57,6 +58,25 @@ export default async function DashboardPage() {
           Visão geral da <span className="font-medium text-gray-700">{parishName}</span>
         </p>
       </div>
+
+      {/* Alerta pendentes */}
+      {(stats?.pending_approvals ?? 0) > 0 && (
+        <Link
+          href="/voluntarios"
+          className="mb-6 flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition"
+        >
+          <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+            <UserCheck className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-amber-900">
+              {stats!.pending_approvals} {stats!.pending_approvals === 1 ? "solicitação" : "solicitações"} aguardando aprovação
+            </p>
+            <p className="text-sm text-amber-700">Clique para revisar</p>
+          </div>
+          <span className="text-amber-600 font-semibold text-sm">Ir →</span>
+        </Link>
+      )}
 
       {/* Cards de estatísticas */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

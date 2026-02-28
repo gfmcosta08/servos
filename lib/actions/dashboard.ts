@@ -43,6 +43,17 @@ export async function getDashboardStatsAction(): Promise<ActionResult<DashboardS
     .select('*', { count: 'exact', head: true })
     .gt('available_spots', 0)
 
+  // Pendentes de aprovação (apenas para quem pode aprovar)
+  let pendingApprovals = 0
+  if (ctx.parishId && ['ADMIN_PARISH', 'SUPER_ADMIN', 'COORDINATOR'].includes(ctx.role)) {
+    const { count } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'PENDING')
+      .eq('parish_id', ctx.parishId)
+    pendingApprovals = count ?? 0
+  }
+
   return {
     success: true,
     data: {
@@ -50,6 +61,7 @@ export async function getDashboardStatsAction(): Promise<ActionResult<DashboardS
       total_ministries: totalMinistries ?? 0,
       upcoming_services: upcomingServices ?? 0,
       open_slots: openSlots ?? 0,
+      pending_approvals: pendingApprovals,
     },
   }
 }
@@ -125,6 +137,20 @@ export async function getUpcomingServicesAction(): Promise<ActionResult<Upcoming
   })
 
   return { success: true, data: upcoming }
+}
+
+export async function getPendingCountAction(): Promise<number> {
+  const ctx = await getAuthenticatedUser()
+  if (!ctx?.parishId || !['ADMIN_PARISH', 'SUPER_ADMIN', 'COORDINATOR'].includes(ctx.role)) {
+    return 0
+  }
+  const supabase = await createClient()
+  const { count } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'PENDING')
+    .eq('parish_id', ctx.parishId)
+  return count ?? 0
 }
 
 export async function getCurrentUserAction(): Promise<CurrentUser | null> {

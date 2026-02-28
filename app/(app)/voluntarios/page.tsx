@@ -4,9 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import { UserCheck, Shield, ChevronDown, Plus, X } from "lucide-react";
 import {
   getVolunteersAction,
+  getPendingUsersAction,
   updateUserRoleAction,
   addMinistryCoordinatorAction,
   removeMinistryCoordinatorAction,
+  approveUserAction,
+  rejectUserAction,
 } from "@/lib/actions/volunteers";
 import { getMinistriesAction } from "@/lib/actions/ministries";
 import toast from "react-hot-toast";
@@ -30,21 +33,25 @@ const ROLE_COLORS: Record<UserRole, string> = {
 
 export default function VoluntariosPage() {
   const [volunteers, setVolunteers] = useState<UserWithCoordinators[]>([]);
+  const [pending, setPending] = useState<UserWithCoordinators[]>([]);
   const [ministries, setMinistries] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [addingFor, setAddingFor] = useState<{ userId: string; userName: string } | null>(null);
+  const [approvingFor, setApprovingFor] = useState<{ userId: string; userName: string } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [volResult, minResult] = await Promise.all([
+    const [volResult, minResult, pendResult] = await Promise.all([
       getVolunteersAction(),
       getMinistriesAction(),
+      getPendingUsersAction(),
     ]);
     if (volResult.success) setVolunteers(volResult.data ?? []);
     if (minResult.success) setMinistries(minResult.data?.map((m) => ({ id: m.id, name: m.name })) ?? []);
+    if (pendResult.success) setPending(pendResult.data ?? []);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -97,7 +104,29 @@ export default function VoluntariosPage() {
     }
   }
 
+  async function handleApprove(userId: string, asCoordinator?: boolean, ministryId?: string) {
+    const result = await approveUserAction(userId, { asCoordinator: !!asCoordinator, ministryId });
+    if (result.success) {
+      toast.success(asCoordinator ? "Aprovado como coordenador." : "Usuário aprovado.");
+      setApprovingFor(null);
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro.");
+    }
+  }
+
+  async function handleReject(userId: string) {
+    const result = await rejectUserAction(userId);
+    if (result.success) {
+      toast.success("Solicitação rejeitada.");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro.");
+    }
+  }
+
   const canManage = currentUserRole === "ADMIN_PARISH" || currentUserRole === "SUPER_ADMIN";
+  const canApprovePending = canManage || currentUserRole === "COORDINATOR";
 
   const filtered = volunteers.filter(
     (v) =>
@@ -127,6 +156,98 @@ export default function VoluntariosPage() {
           className="w-full max-w-sm px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
+
+      {/* Pendentes */}
+      {canApprovePending && pending.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
+              {pending.length}
+            </span>
+            Aguardando aprovação
+          </h2>
+          <div className="bg-amber-50/50 border border-amber-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-amber-200 bg-amber-50/80">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wide">Nome</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wide hidden md:table-cell">Email</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wide">Ministério</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wide">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-100">
+                {pending.map((p) => (
+                  <tr key={p.id} className="hover:bg-amber-50/50 transition">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-amber-800">{p.name[0]?.toUpperCase()}</span>
+                        </div>
+                        <span className="font-medium text-gray-900">{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-gray-500 hidden md:table-cell">{p.email}</td>
+                    <td className="px-5 py-4 text-gray-600">
+                      {p.ministry_preference?.name ?? "—"}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {approvingFor?.userId === p.id ? (
+                          <select
+                            className="text-xs border border-amber-300 rounded px-2 py-1.5 bg-white"
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v) {
+                                handleApprove(p.id, true, v);
+                              }
+                            }}
+                            onBlur={() => setApprovingFor(null)}
+                            autoFocus
+                          >
+                            <option value="">Aprovar como coordenador de...</option>
+                            {ministries
+                              .filter((m) => m.id === p.ministry_preference?.id || true)
+                              .map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                          </select>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleApprove(p.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700"
+                            >
+                              Aprovar
+                            </button>
+                            {canManage && p.ministry_preference && (
+                              <button
+                                type="button"
+                                onClick={() => setApprovingFor({ userId: p.id, userName: p.name })}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700"
+                              >
+                                Aprovar como coordenador
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleReject(p.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200"
+                            >
+                              Rejeitar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">

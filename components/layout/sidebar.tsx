@@ -26,9 +26,10 @@ interface SidebarProps {
   parishName?: string;
   userName?: string;
   userRole?: string;
+  pendingCount?: number;
 }
 
-export function Sidebar({ parishName, userName, userRole }: SidebarProps) {
+export function Sidebar({ parishName, userName, userRole, pendingCount = 0 }: SidebarProps) {
   const pathname = usePathname();
 
   const roleLabel: Record<string, string> = {
@@ -59,6 +60,7 @@ export function Sidebar({ parishName, userName, userRole }: SidebarProps) {
       <nav className="flex-1 p-4 space-y-1">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
+          const showBadge = href === "/voluntarios" && pendingCount > 0;
           return (
             <Link
               key={href}
@@ -72,6 +74,11 @@ export function Sidebar({ parishName, userName, userRole }: SidebarProps) {
             >
               <Icon className="w-5 h-5 shrink-0" />
               {label}
+              {showBadge && (
+                <span className="ml-auto min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </span>
+              )}
             </Link>
           );
         })}

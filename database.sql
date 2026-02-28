@@ -15,7 +15,13 @@ DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS parishes CASCADE;
 
 -- Limpar tipos customizados
+DROP TYPE IF EXISTS user_status CASCADE;
 DROP TYPE IF EXISTS user_role CASCADE;
+
+-- ============================================================
+-- ENUM: Status de aprovação do usuário
+-- ============================================================
+CREATE TYPE user_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 
 -- ============================================================
 -- ENUM: Roles
@@ -44,6 +50,7 @@ CREATE TABLE users (
   email       TEXT NOT NULL UNIQUE,
   role        user_role NOT NULL DEFAULT 'VOLUNTEER',
   parish_id   UUID REFERENCES parishes(id) ON DELETE SET NULL,
+  status      user_status NOT NULL DEFAULT 'APPROVED',
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 
@@ -437,15 +444,26 @@ CREATE POLICY "registrations_delete" ON registrations
 -- ============================================================
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_role user_role;
+  v_status user_status;
 BEGIN
-  INSERT INTO public.users (id, name, email, role, parish_id, ministry_preference_id)
+  v_role := COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'VOLUNTEER');
+  IF v_role = 'ADMIN_PARISH' THEN
+    v_status := 'APPROVED';
+  ELSE
+    v_status := COALESCE((NEW.raw_user_meta_data->>'status')::user_status, 'PENDING');
+  END IF;
+
+  INSERT INTO public.users (id, name, email, role, parish_id, ministry_preference_id, status)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
     NEW.email,
-    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'VOLUNTEER'),
+    v_role,
     (NEW.raw_user_meta_data->>'parish_id')::UUID,
-    (NEW.raw_user_meta_data->>'ministry_id')::UUID
+    (NEW.raw_user_meta_data->>'ministry_id')::UUID,
+    v_status
   );
   RETURN NEW;
 END;

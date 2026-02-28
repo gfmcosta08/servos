@@ -138,7 +138,7 @@ export async function registerJoinParishAction(
     return { success: false, error: 'Paróquia não encontrada.' }
   }
 
-  // Criar usuário como VOLUNTEER (ministry_id = ministério ao qual se candidatou)
+  // Criar usuário como VOLUNTEER com status PENDING (aguarda aprovação do admin)
   const { error: authError } = await supabase.auth.signUp({
     email,
     password,
@@ -147,6 +147,7 @@ export async function registerJoinParishAction(
         name,
         role: 'VOLUNTEER',
         parish_id: parishId,
+        status: 'PENDING',
         ...(ministryId && { ministry_id: ministryId }),
       },
     },
@@ -156,6 +157,8 @@ export async function registerJoinParishAction(
     if (authError.message.includes('already registered')) {
       return { success: false, error: 'Este email já está cadastrado.' }
     }
+    // Log para diagnóstico (Vercel/Supabase logs)
+    console.error('[registerJoinParish]', authError.message)
     return { success: false, error: 'Erro ao criar conta. Tente novamente.' }
   }
 

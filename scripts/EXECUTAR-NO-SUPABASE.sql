@@ -1,6 +1,6 @@
 -- ============================================================
--- EXECUTAR NO SUPABASE SQL EDITOR
--- Copie tudo (Ctrl+A, Ctrl+C), cole no Supabase → SQL Editor, clique em Run
+-- EXECUTAR TUDO NO SUPABASE SQL EDITOR
+-- Copie este arquivo inteiro, cole no Supabase → SQL Editor, clique em Run
 -- ============================================================
 
 -- ========== PARTE 1: Fluxo de aprovação ==========
@@ -256,7 +256,6 @@ BEGIN
     v_status := COALESCE((NEW.raw_user_meta_data->>'status')::user_status, 'PENDING');
   END IF;
 
-  -- ministry_id: tratar string vazia (''::uuid falha)
   BEGIN
     v_ministry_id := NULLIF(TRIM(COALESCE(NEW.raw_user_meta_data->>'ministry_id', '')), '')::UUID;
   EXCEPTION WHEN OTHERS THEN
@@ -277,7 +276,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Owner postgres para bypass de RLS (trigger roda como supabase_auth_admin)
 DO $$
 BEGIN
   ALTER FUNCTION public.handle_new_user() OWNER TO postgres;
@@ -291,5 +289,5 @@ WHERE NOT EXISTS (
 );
 
 -- ============================================================
--- FIM. Copie tudo, cole no Supabase SQL Editor e clique em Run.
+-- FIM. Execute no Supabase SQL Editor e clique em Run.
 -- ============================================================

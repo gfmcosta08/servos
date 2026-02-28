@@ -8,6 +8,7 @@ interface AppShellProps {
   parishName?: string;
   userName?: string;
   userRole?: string;
+  pendingCount?: number;
   children: React.ReactNode;
 }
 
@@ -15,6 +16,7 @@ export function AppShell({
   parishName,
   userName,
   userRole,
+  pendingCount = 0,
   children,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -50,6 +52,7 @@ export function AppShell({
           parishName={parishName}
           userName={userName}
           userRole={userRole}
+          pendingCount={pendingCount}
         />
       </div>
 

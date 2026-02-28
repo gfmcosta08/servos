@@ -30,9 +30,7 @@ export async function getMinistriesAction(): Promise<ActionResult<Ministry[]>> {
 
   if (['VOLUNTEER', 'COORDINATOR'].includes(ctx.role)) {
     const allowedIds = await getUserMinistryIds(ctx.user.id, ctx.role)
-    if (allowedIds.length > 0) {
-      ministries = ministries.filter((m) => allowedIds.includes(m.id))
-    }
+    ministries = ministries.filter((m) => allowedIds.includes(m.id))
   }
 
   return { success: true, data: ministries }

@@ -45,7 +45,13 @@ export async function getDashboardStatsAction(): Promise<ActionResult<DashboardS
 
   // Pendentes de aprovação (apenas para quem pode aprovar)
   let pendingApprovals = 0
-  if (ctx.parishId && ['ADMIN_PARISH', 'SUPER_ADMIN', 'COORDINATOR'].includes(ctx.role)) {
+  if (ctx.role === 'SUPER_ADMIN') {
+    const { count } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'PENDING')
+    pendingApprovals = count ?? 0
+  } else if (ctx.parishId && ['ADMIN_PARISH', 'COORDINATOR'].includes(ctx.role)) {
     const { count } = await supabase
       .from('users')
       .select('*', { count: 'exact', head: true })

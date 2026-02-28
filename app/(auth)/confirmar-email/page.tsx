@@ -17,11 +17,21 @@ export default function ConfirmarEmailPage() {
         Clique no link para ativar sua conta e acessar o Servos.
       </p>
 
-      <div className="bg-primary-50 rounded-xl px-5 py-4 text-sm text-primary-700 mb-6">
-        <strong>Não encontrou o e-mail?</strong> Verifique a pasta de spam ou
-        lixo eletrônico. Se não receber em 30 minutos, o provedor de email do
-        Supabase pode estar com limite atingido — configure SMTP customizado no
-        Supabase para produção (veja README).
+      <div className="bg-primary-50 rounded-xl px-5 py-4 text-sm text-primary-700 mb-6 space-y-2">
+        <p>
+          <strong>Não encontrou o e-mail?</strong> Verifique a pasta de spam ou
+          lixo eletrônico. Aguarde até 30 minutos.
+        </p>
+        <p>
+          O provedor padrão do Supabase tem limite baixo (~3 emails/hora). Para
+          produção, configure SMTP customizado no Supabase (veja README).
+        </p>
+        <p>
+          <strong>E-mail não chegou?</strong> Peça ao Super Admin que confirme
+          manualmente: acesse Voluntários e use &quot;Confirmar email por
+          endereço&quot; digitando seu e-mail, ou clique em &quot;Confirmar
+          email&quot; na lista de Aguardando aprovação.
+        </p>
       </div>
 
       <p className="text-sm text-gray-500">

@@ -195,7 +195,9 @@ O Supabase envia emails de confirmação e recuperação de senha. O provedor pa
    - **User/Password:** credenciais do provedor
 4. Salve as alterações
 
-**Alternativa para testes:** Em Authentication → Providers → Email, desative temporariamente "Confirm email" para permitir login sem confirmação.
+**Para testes (sem SMTP):** Em Authentication → Providers → Email, desative temporariamente "Confirm email". Usuários poderão fazer login sem confirmar o e-mail.
+
+**Quando o e-mail não chega:** O Super Admin pode confirmar o e-mail manualmente na tela Voluntários → Aguardando aprovação → botão "Confirmar email".
 
 ---
 

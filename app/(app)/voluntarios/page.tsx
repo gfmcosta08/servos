@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { UserCheck, Shield, ChevronDown, Plus, X, Trash2, UserMinus } from "lucide-react";
+import { UserCheck, Shield, ChevronDown, Plus, X, Trash2, UserMinus, Mail } from "lucide-react";
 import {
   getVolunteersAction,
   getPendingUsersAction,
@@ -16,6 +16,8 @@ import {
   approveMinistryRequestAction,
   removeUserFromMinistryAction,
   excludeUserAction,
+  confirmUserEmailManuallyAction,
+  confirmUserEmailByEmailAction,
 } from "@/lib/actions/volunteers";
 import { getMinistriesAction } from "@/lib/actions/ministries";
 import toast from "react-hot-toast";
@@ -51,7 +53,10 @@ export default function VoluntariosPage() {
   const [pendingMinistryRequests, setPendingMinistryRequests] = useState<
     { user_id: string; user_name: string; user_email: string; ministry_id: string; ministry_name: string }[]
   >([]);
-  const [coordMinistries, setCoordMinistries] = useState<{ id: string; name: string }[]>([]);
+  const   [coordMinistries, setCoordMinistries] = useState<{ id: string; name: string }[]>([]);
+  const [confirmingEmailId, setConfirmingEmailId] = useState<string | null>(null);
+  const [confirmEmailByAddress, setConfirmEmailByAddress] = useState("");
+  const [confirmingEmailByAddress, setConfirmingEmailByAddress] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -146,6 +151,32 @@ export default function VoluntariosPage() {
     }
   }
 
+  async function handleConfirmEmail(userId: string) {
+    setConfirmingEmailId(userId);
+    const result = await confirmUserEmailManuallyAction(userId);
+    if (result.success) {
+      toast.success("Email confirmado. O usuário já pode fazer login.");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro ao confirmar email.");
+    }
+    setConfirmingEmailId(null);
+  }
+
+  async function handleConfirmEmailByAddress() {
+    if (!confirmEmailByAddress.trim()) return;
+    setConfirmingEmailByAddress(true);
+    const result = await confirmUserEmailByEmailAction(confirmEmailByAddress.trim());
+    if (result.success) {
+      toast.success("Email confirmado. A pessoa já pode fazer login.");
+      setConfirmEmailByAddress("");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro ao confirmar email.");
+    }
+    setConfirmingEmailByAddress(false);
+  }
+
   async function handleApproveMinistryRequest(userId: string, ministryId: string) {
     const result = await approveMinistryRequestAction(userId, ministryId);
     if (result.success) {
@@ -218,6 +249,37 @@ export default function VoluntariosPage() {
         />
       </div>
 
+      {/* Confirmar email por endereço (SUPER_ADMIN) - quando o usuário não aparece na lista */}
+      {currentUserRole === "SUPER_ADMIN" && (
+        <div className="mb-8 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+          <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+            <Mail className="w-4 h-4" />
+            Confirmar email por endereço
+          </h3>
+          <p className="text-xs text-slate-600 mb-3">
+            Use quando alguém se cadastrou mas o email de confirmação não chegou (ex.: usuário excluído que se recadastrou).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="email"
+              placeholder="email@exemplo.com"
+              value={confirmEmailByAddress}
+              onChange={(e) => setConfirmEmailByAddress(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleConfirmEmailByAddress()}
+              className="flex-1 min-w-[200px] px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleConfirmEmailByAddress}
+              disabled={!confirmEmailByAddress.trim() || confirmingEmailByAddress}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50"
+            >
+              {confirmingEmailByAddress ? "Confirmando..." : "Confirmar email"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Pendentes */}
       {canApprovePending && pending.length > 0 && (
         <div className="mb-8">
@@ -275,6 +337,18 @@ export default function VoluntariosPage() {
                           </select>
                         ) : (
                           <>
+                            {currentUserRole === "SUPER_ADMIN" && (
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmEmail(p.id)}
+                                disabled={confirmingEmailId === p.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300"
+                                title="Confirmar email (quando o email do Supabase não chegou)"
+                              >
+                                <Mail className="w-3.5 h-3.5" />
+                                {confirmingEmailId === p.id ? "Confirmando..." : "Confirmar email"}
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => handleApprove(p.id)}

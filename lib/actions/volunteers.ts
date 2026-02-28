@@ -135,14 +135,20 @@ export async function getPendingUsersAction(): Promise<ActionResult<UserWithCoor
   const isAdmin = ['ADMIN_PARISH', 'SUPER_ADMIN'].includes(ctx.role)
   const coordMinistries = ctx.role === 'COORDINATOR' ? await getMinistriesUserCanManage() : []
 
-  if (!ctx.parishId) return { success: true, data: [] }
+  // SUPER_ADMIN vê todos os pendentes; outros precisam de parish_id
+  if (!ctx.parishId && ctx.role !== 'SUPER_ADMIN') return { success: true, data: [] }
 
-  const { data: users, error } = await supabase
+  let query = supabase
     .from('users')
     .select('*')
     .eq('status', 'PENDING')
-    .eq('parish_id', ctx.parishId)
     .order('name')
+
+  if (ctx.role !== 'SUPER_ADMIN' && ctx.parishId) {
+    query = query.eq('parish_id', ctx.parishId)
+  }
+
+  const { data: users, error } = await query
 
   if (error) return { success: false, error: 'Erro ao buscar pendentes.' }
 
@@ -535,6 +541,80 @@ export async function excludeUserAction(userId: string): Promise<ActionResult> {
 
   revalidatePath('/voluntarios')
   revalidatePath('/dashboard')
+  return { success: true }
+}
+
+// ============================================================
+// CONFIRMAÇÃO MANUAL DE EMAIL (quando o email do Supabase não chega)
+// ============================================================
+
+export async function confirmUserEmailManuallyAction(userId: string): Promise<ActionResult> {
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (ctx.role !== 'SUPER_ADMIN') {
+    return { success: false, error: 'Apenas Super Admin pode confirmar email manualmente.' }
+  }
+
+  const adminClient = createAdminClient()
+  const { error } = await adminClient.auth.admin.updateUserById(userId, {
+    email_confirm: true,
+  })
+
+  if (error) {
+    console.error('[confirmUserEmailManuallyAction]', error.message)
+    return {
+      success: false,
+      error: 'Erro ao confirmar email. Verifique se o usuário existe.',
+    }
+  }
+
+  revalidatePath('/voluntarios')
+  return { success: true }
+}
+
+/**
+ * Confirma email por endereço (quando o usuário não aparece na lista de pendentes).
+ * Útil para usuários excluídos que se recadastraram e o email de confirmação não chegou.
+ */
+export async function confirmUserEmailByEmailAction(email: string): Promise<ActionResult> {
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (ctx.role !== 'SUPER_ADMIN') {
+    return { success: false, error: 'Apenas Super Admin pode confirmar email por endereço.' }
+  }
+
+  const trimmed = email?.trim().toLowerCase()
+  if (!trimmed) return { success: false, error: 'Informe o email.' }
+
+  const adminClient = createAdminClient()
+  const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  })
+
+  if (listError) {
+    console.error('[confirmUserEmailByEmailAction] listUsers:', listError.message)
+    return { success: false, error: 'Erro ao buscar usuários.' }
+  }
+
+  const user = (users ?? []).find((u) => u.email?.toLowerCase() === trimmed)
+  if (!user) {
+    return {
+      success: false,
+      error: 'Usuário não encontrado. Peça à pessoa para se cadastrar primeiro em /register.',
+    }
+  }
+
+  const { error: updateError } = await adminClient.auth.admin.updateUserById(user.id, {
+    email_confirm: true,
+  })
+
+  if (updateError) {
+    console.error('[confirmUserEmailByEmailAction] updateUserById:', updateError.message)
+    return { success: false, error: 'Erro ao confirmar email.' }
+  }
+
+  revalidatePath('/voluntarios')
   return { success: true }
 }
 

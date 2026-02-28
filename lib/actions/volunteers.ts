@@ -462,12 +462,13 @@ export async function approveMinistryRequestAction(
     return { success: false, error: 'Sem permissão para aprovar esta candidatura.' }
   }
 
-  const { data, error } = await supabase
+  // Usar admin client para bypass de RLS (evita bloqueio em user_ministries_update)
+  const adminClient = createAdminClient()
+  const { data, error } = await adminClient
     .from('user_ministries')
     .update({ status: 'APPROVED' })
     .eq('user_id', userId)
     .eq('ministry_id', ministryId)
-    .eq('status', 'PENDING')
     .select()
     .single()
 

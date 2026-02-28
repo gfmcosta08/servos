@@ -157,9 +157,14 @@ export async function registerJoinParishAction(
     if (authError.message.includes('already registered')) {
       return { success: false, error: 'Este email já está cadastrado.' }
     }
-    // Log para diagnóstico (Vercel/Supabase logs)
     console.error('[registerJoinParish]', authError.message)
-    return { success: false, error: 'Erro ao criar conta. Tente novamente.' }
+    const showDebug =
+      process.env.NODE_ENV === 'development' ||
+      process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true'
+    return {
+      success: false,
+      error: showDebug ? `[DEBUG] ${authError.message}` : 'Erro ao criar conta. Tente novamente.',
+    }
   }
 
   revalidatePath('/', 'layout')

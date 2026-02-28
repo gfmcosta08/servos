@@ -587,17 +587,31 @@ export async function confirmUserEmailByEmailAction(email: string): Promise<Acti
   if (!trimmed) return { success: false, error: 'Informe o email.' }
 
   const adminClient = createAdminClient()
-  const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  })
+  let user: { id: string; email?: string } | null = null
+  let page = 1
+  const perPage = 500
 
-  if (listError) {
-    console.error('[confirmUserEmailByEmailAction] listUsers:', listError.message)
-    return { success: false, error: 'Erro ao buscar usuários.' }
+  // Paginar para encontrar o usuário (listUsers pode retornar menos que perPage)
+  while (true) {
+    const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers({
+      page,
+      perPage,
+    })
+
+    if (listError) {
+      console.error('[confirmUserEmailByEmailAction] listUsers:', listError.message)
+      return { success: false, error: 'Erro ao buscar usuários.' }
+    }
+
+    const found = (users ?? []).find((u) => u.email?.toLowerCase() === trimmed)
+    if (found) {
+      user = found
+      break
+    }
+    if (!users || users.length < perPage) break
+    page++
   }
 
-  const user = (users ?? []).find((u) => u.email?.toLowerCase() === trimmed)
   if (!user) {
     return {
       success: false,

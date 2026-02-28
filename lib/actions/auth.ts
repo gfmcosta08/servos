@@ -22,6 +22,14 @@ export async function loginAction(formData: FormData): Promise<ActionResult> {
   const { error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error) {
+    const msg = error.message?.toLowerCase() ?? ''
+    if (msg.includes('email not confirmed') || msg.includes('email não confirmado')) {
+      return {
+        success: false,
+        error:
+          'Email não confirmado. Peça ao Super Admin que confirme em Voluntários → "Confirmar email por endereço".',
+      }
+    }
     return { success: false, error: 'Email ou senha inválidos.' }
   }
 

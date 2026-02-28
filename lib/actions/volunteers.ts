@@ -9,6 +9,7 @@ import type { ActionResult, User } from '@/types/database'
 export type UserWithCoordinators = User & {
   ministry_preference?: { id: string; name: string } | null
   coordinator_of: { id: string; name: string }[]
+  ministries: { id: string; name: string; status?: string }[]
 }
 
 // ============================================================
@@ -62,6 +63,28 @@ export async function getVolunteersAction(): Promise<ActionResult<UserWithCoordi
     {}
   )
 
+  const { data: userMinistries } = userList.length > 0
+    ? await supabase
+        .from('user_ministries')
+        .select('user_id, ministry_id, status')
+        .in('user_id', userList.map((u) => u.id))
+    : { data: [] }
+
+  const umMinistryIds = [...new Set((userMinistries ?? []).map((um) => um.ministry_id))]
+  const { data: umMinistries } = umMinistryIds.length > 0
+    ? await supabase.from('ministries').select('id, name').in('id', umMinistryIds)
+    : { data: [] }
+  const umMinistryMap = new Map((umMinistries ?? []).map((m) => [m.id, m]))
+
+  const ministriesByUser = (userMinistries ?? []).reduce<
+    Record<string, { id: string; name: string; status?: string }[]>
+  >((acc, um) => {
+    const m = umMinistryMap.get(um.ministry_id)
+    if (!acc[um.user_id]) acc[um.user_id] = []
+    if (m) acc[um.user_id].push({ id: m.id, name: m.name, status: (um as { status?: string }).status })
+    return acc
+  }, {})
+
   const result: UserWithCoordinators[] = userList.map((u) => {
     const prefId = (u as User & { ministry_preference_id?: string }).ministry_preference_id
     const pref = prefId ? ministryMap.get(prefId) : null
@@ -69,6 +92,7 @@ export async function getVolunteersAction(): Promise<ActionResult<UserWithCoordi
       ...u,
       ministry_preference: pref ?? null,
       coordinator_of: coordByUser[u.id] ?? [],
+      ministries: ministriesByUser[u.id] ?? [],
     }
   })
 
@@ -323,4 +347,192 @@ export async function removeMinistryCoordinatorAction(
 
   revalidatePath('/voluntarios')
   return { success: true }
+}
+
+// ============================================================
+// CANDIDATURAS A MINISTÉRIOS (PENDING -> APPROVED)
+// ============================================================
+
+export type PendingMinistryRequest = {
+  user_id: string
+  user_name: string
+  user_email: string
+  ministry_id: string
+  ministry_name: string
+}
+
+export async function getPendingMinistryRequestsAction(): Promise<
+  ActionResult<PendingMinistryRequest[]>
+> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+
+  const isAdmin = ['ADMIN_PARISH', 'SUPER_ADMIN'].includes(ctx.role)
+  const coordMinistries = ctx.role === 'COORDINATOR' ? await getMinistriesUserCanManage() : []
+
+  if (!isAdmin && coordMinistries.length === 0) {
+    return { success: true, data: [] }
+  }
+
+  const coordMinistryIds = coordMinistries.map((m) => m.id)
+
+  let pending: { user_id: string; ministry_id: string }[] = []
+  if (ctx.role === 'SUPER_ADMIN') {
+    const { data } = await supabase
+      .from('user_ministries')
+      .select('user_id, ministry_id')
+      .eq('status', 'PENDING')
+    pending = data ?? []
+  } else if (isAdmin && ctx.parishId) {
+    const { data: ministries } = await supabase
+      .from('ministries')
+      .select('id')
+      .eq('parish_id', ctx.parishId)
+    const parishMinistryIds = (ministries ?? []).map((m) => m.id)
+    if (parishMinistryIds.length > 0) {
+      const { data } = await supabase
+        .from('user_ministries')
+        .select('user_id, ministry_id')
+        .eq('status', 'PENDING')
+        .in('ministry_id', parishMinistryIds)
+      pending = data ?? []
+    }
+  } else {
+    const { data } = await supabase
+      .from('user_ministries')
+      .select('user_id, ministry_id')
+      .eq('status', 'PENDING')
+      .in('ministry_id', coordMinistryIds)
+    pending = data ?? []
+  }
+
+  if (!pending.length) return { success: true, data: [] }
+
+  const userIds = [...new Set(pending.map((p) => p.user_id))]
+  const ministryIds = [...new Set(pending.map((p) => p.ministry_id))]
+
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, name, email')
+    .in('id', userIds)
+  const { data: ministries } = await supabase
+    .from('ministries')
+    .select('id, name')
+    .in('id', ministryIds)
+
+  const userMap = new Map((users ?? []).map((u) => [u.id, u]))
+  const ministryMap = new Map((ministries ?? []).map((m) => [m.id, m]))
+
+  const result: PendingMinistryRequest[] = pending.map((p) => {
+    const u = userMap.get(p.user_id)
+    const m = ministryMap.get(p.ministry_id)
+    return {
+      user_id: p.user_id,
+      user_name: u?.name ?? '',
+      user_email: u?.email ?? '',
+      ministry_id: p.ministry_id,
+      ministry_name: m?.name ?? '',
+    }
+  })
+
+  return { success: true, data: result }
+}
+
+export async function approveMinistryRequestAction(
+  userId: string,
+  ministryId: string
+): Promise<ActionResult> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+
+  const isAdmin = ['ADMIN_PARISH', 'SUPER_ADMIN'].includes(ctx.role)
+  const coordMinistries = ctx.role === 'COORDINATOR' ? await getMinistriesUserCanManage() : []
+
+  const canApprove =
+    isAdmin || coordMinistries.some((m) => m.id === ministryId)
+  if (!canApprove) {
+    return { success: false, error: 'Sem permissão para aprovar esta candidatura.' }
+  }
+
+  const { data, error } = await supabase
+    .from('user_ministries')
+    .update({ status: 'APPROVED' })
+    .eq('user_id', userId)
+    .eq('ministry_id', ministryId)
+    .eq('status', 'PENDING')
+    .select()
+    .single()
+
+  if (error || !data) {
+    return { success: false, error: 'Candidatura não encontrada ou já processada.' }
+  }
+
+  revalidatePath('/voluntarios')
+  revalidatePath('/ministerios')
+  return { success: true }
+}
+
+// ============================================================
+// REMOVER ACESSO / EXCLUIR USUÁRIO
+// ============================================================
+
+export async function removeUserFromMinistryAction(
+  userId: string,
+  ministryId: string
+): Promise<ActionResult> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+
+  const isAdmin = ['ADMIN_PARISH', 'SUPER_ADMIN'].includes(ctx.role)
+  const coordMinistries = ctx.role === 'COORDINATOR' ? await getMinistriesUserCanManage() : []
+
+  const canRemove =
+    isAdmin || coordMinistries.some((m) => m.id === ministryId)
+  if (!canRemove) {
+    return { success: false, error: 'Sem permissão para remover acesso deste ministério.' }
+  }
+
+  const { error } = await supabase
+    .from('user_ministries')
+    .delete()
+    .eq('user_id', userId)
+    .eq('ministry_id', ministryId)
+
+  if (error) return { success: false, error: 'Erro ao remover acesso.' }
+
+  revalidatePath('/voluntarios')
+  return { success: true }
+}
+
+export async function excludeUserAction(userId: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (ctx.role !== 'SUPER_ADMIN') {
+    return { success: false, error: 'Apenas Super Admin pode excluir usuários.' }
+  }
+
+  const { error } = await supabase
+    .from('users')
+    .update({ status: 'REJECTED', parish_id: null })
+    .eq('id', userId)
+
+  if (error) return { success: false, error: 'Erro ao excluir usuário.' }
+
+  await supabase.from('user_ministries').delete().eq('user_id', userId)
+  await supabase.from('ministry_coordinators').delete().eq('user_id', userId)
+
+  revalidatePath('/voluntarios')
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function getMinistriesUserCanManageAction(): Promise<
+  ActionResult<{ id: string; name: string }[]>
+> {
+  const data = await getMinistriesUserCanManage()
+  return { success: true, data }
 }

@@ -86,13 +86,14 @@ export async function getMinistriesUserCanManage(): Promise<{ id: string; name: 
 // ============================================================
 
 /** Retorna os IDs dos ministérios aos quais o usuário tem acesso.
- *  Para COORDINATOR: união de user_ministries e ministry_coordinators. */
+ *  Para COORDINATOR: união de user_ministries (apenas APPROVED) e ministry_coordinators. */
 export async function getUserMinistryIds(userId: string, role?: string): Promise<string[]> {
   const supabase = await createClient()
   const { data: um } = await supabase
     .from('user_ministries')
     .select('ministry_id')
     .eq('user_id', userId)
+    .or('status.eq.APPROVED,status.is.null')
   const fromUserMinistries = (um ?? []).map((r) => r.ministry_id)
   if (role === 'COORDINATOR') {
     const { data: mc } = await supabase
@@ -137,6 +138,7 @@ export async function canAccessMinistry(userId: string, ministryId: string): Pro
     .select('ministry_id')
     .eq('user_id', userId)
     .eq('ministry_id', ministryId)
+    .or('status.eq.APPROVED,status.is.null')
     .maybeSingle()
   return !!um
 }

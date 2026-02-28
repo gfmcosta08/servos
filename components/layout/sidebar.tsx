@@ -58,7 +58,10 @@ export function Sidebar({ parishName, userName, userRole, pendingCount = 0 }: Si
 
       {/* Navegação */}
       <nav className="flex-1 p-4 space-y-1">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((item) => {
+          if (item.href === "/voluntarios" && userRole === "VOLUNTEER") return false;
+          return true;
+        }).map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
           const showBadge = href === "/voluntarios" && pendingCount > 0;
           return (

@@ -1,15 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { UserCheck, Shield, ChevronDown, Plus, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { UserCheck, Shield, ChevronDown, Plus, X, Trash2, UserMinus } from "lucide-react";
 import {
   getVolunteersAction,
   getPendingUsersAction,
+  getPendingMinistryRequestsAction,
+  getMinistriesUserCanManageAction,
   updateUserRoleAction,
   addMinistryCoordinatorAction,
   removeMinistryCoordinatorAction,
   approveUserAction,
   rejectUserAction,
+  approveMinistryRequestAction,
+  removeUserFromMinistryAction,
+  excludeUserAction,
 } from "@/lib/actions/volunteers";
 import { getMinistriesAction } from "@/lib/actions/ministries";
 import toast from "react-hot-toast";
@@ -32,6 +38,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 export default function VoluntariosPage() {
+  const router = useRouter();
   const [volunteers, setVolunteers] = useState<UserWithCoordinators[]>([]);
   const [pending, setPending] = useState<UserWithCoordinators[]>([]);
   const [ministries, setMinistries] = useState<{ id: string; name: string }[]>([]);
@@ -41,17 +48,25 @@ export default function VoluntariosPage() {
   const [search, setSearch] = useState("");
   const [addingFor, setAddingFor] = useState<{ userId: string; userName: string } | null>(null);
   const [approvingFor, setApprovingFor] = useState<{ userId: string; userName: string } | null>(null);
+  const [pendingMinistryRequests, setPendingMinistryRequests] = useState<
+    { user_id: string; user_name: string; user_email: string; ministry_id: string; ministry_name: string }[]
+  >([]);
+  const [coordMinistries, setCoordMinistries] = useState<{ id: string; name: string }[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [volResult, minResult, pendResult] = await Promise.all([
+    const [volResult, minResult, pendResult, pendMinResult, coordResult] = await Promise.all([
       getVolunteersAction(),
       getMinistriesAction(),
       getPendingUsersAction(),
+      getPendingMinistryRequestsAction(),
+      getMinistriesUserCanManageAction(),
     ]);
     if (volResult.success) setVolunteers(volResult.data ?? []);
     if (minResult.success) setMinistries(minResult.data?.map((m) => ({ id: m.id, name: m.name })) ?? []);
     if (pendResult.success) setPending(pendResult.data ?? []);
+    if (pendMinResult.success) setPendingMinistryRequests(pendMinResult.data ?? []);
+    if (coordResult.success) setCoordMinistries(coordResult.data ?? []);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -69,6 +84,12 @@ export default function VoluntariosPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (currentUserRole === "VOLUNTEER") {
+      router.replace("/dashboard");
+    }
+  }, [currentUserRole, router]);
 
   async function handleRoleChange(userId: string, newRole: string) {
     const result = await updateUserRoleAction(
@@ -125,8 +146,48 @@ export default function VoluntariosPage() {
     }
   }
 
+  async function handleApproveMinistryRequest(userId: string, ministryId: string) {
+    const result = await approveMinistryRequestAction(userId, ministryId);
+    if (result.success) {
+      toast.success("Candidatura aprovada.");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro.");
+    }
+  }
+
+  async function handleRemoveAccess(userId: string, ministryId: string) {
+    if (!confirm("Remover acesso deste voluntário ao ministério?")) return;
+    const result = await removeUserFromMinistryAction(userId, ministryId);
+    if (result.success) {
+      toast.success("Acesso removido.");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro.");
+    }
+  }
+
+  async function handleExcludeUser(userId: string, userName: string) {
+    if (!confirm(`Excluir "${userName}" do sistema? O usuário não poderá mais acessar o app.`)) return;
+    const result = await excludeUserAction(userId);
+    if (result.success) {
+      toast.success("Usuário excluído.");
+      loadData();
+    } else {
+      toast.error(result.error ?? "Erro.");
+    }
+  }
+
   const canManage = currentUserRole === "ADMIN_PARISH" || currentUserRole === "SUPER_ADMIN";
   const canApprovePending = canManage || currentUserRole === "COORDINATOR";
+
+  if (currentUserRole === "VOLUNTEER") {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="animate-pulse text-gray-400">Redirecionando...</div>
+      </div>
+    );
+  }
 
   const filtered = volunteers.filter(
     (v) =>
@@ -249,6 +310,48 @@ export default function VoluntariosPage() {
         </div>
       )}
 
+      {/* Candidaturas a ministérios (voluntários já aprovados) */}
+      {canApprovePending && pendingMinistryRequests.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+              {pendingMinistryRequests.length}
+            </span>
+            Candidaturas a ministérios
+          </h2>
+          <div className="bg-blue-50/50 border border-blue-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-blue-200 bg-blue-50/80">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-blue-800 uppercase tracking-wide">Voluntário</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-blue-800 uppercase tracking-wide hidden md:table-cell">Email</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-blue-800 uppercase tracking-wide">Ministério</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-blue-800 uppercase tracking-wide">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-blue-100">
+                {pendingMinistryRequests.map((r, i) => (
+                  <tr key={`${r.user_id}-${r.ministry_id}-${i}`} className="hover:bg-blue-50/50 transition">
+                    <td className="px-5 py-4 font-medium text-gray-900">{r.user_name}</td>
+                    <td className="px-5 py-4 text-gray-500 hidden md:table-cell">{r.user_email}</td>
+                    <td className="px-5 py-4 text-gray-600">{r.ministry_name}</td>
+                    <td className="px-5 py-4">
+                      <button
+                        type="button"
+                        onClick={() => handleApproveMinistryRequest(r.user_id, r.ministry_id)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700"
+                      >
+                        Aprovar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
@@ -277,8 +380,13 @@ export default function VoluntariosPage() {
                   Cargo
                 </th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Coordenador de
+                  Coordenador de / Ministérios
                 </th>
+                {currentUserRole === "SUPER_ADMIN" && (
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">
+                    Ações
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -386,12 +494,54 @@ export default function VoluntariosPage() {
                           )
                         )}
                     </div>
-                    {vol.ministry_preference && !vol.coordinator_of?.some((c) => c.id === vol.ministry_preference?.id) && (
+                    {vol.ministries && vol.ministries.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                        {vol.ministries
+                          .filter((m) => (m.status === "APPROVED" || !m.status) && !vol.coordinator_of?.some((c) => c.id === m.id))
+                          .map((m) => (
+                            <span
+                              key={m.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700"
+                            >
+                              {m.name}
+                              {currentUserRole === "COORDINATOR" &&
+                                coordMinistries.some((c) => c.id === m.id) &&
+                                vol.id !== currentUserId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveAccess(vol.id, m.id)}
+                                    className="hover:bg-green-100 rounded p-0.5"
+                                    aria-label={`Remover acesso a ${m.name}`}
+                                    title="Remover acesso"
+                                  >
+                                    <UserMinus className="w-3 h-3" />
+                                  </button>
+                                )}
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                    {vol.ministry_preference && !vol.coordinator_of?.some((c) => c.id === vol.ministry_preference?.id) && !vol.ministries?.some((m) => m.id === vol.ministry_preference?.id) && (
                       <p className="text-xs text-gray-500 mt-1">
                         Candidatou-se a: {vol.ministry_preference.name}
                       </p>
                     )}
                   </td>
+                  {currentUserRole === "SUPER_ADMIN" && (
+                    <td className="px-5 py-4">
+                      {vol.id !== currentUserId && vol.role !== "SUPER_ADMIN" && (
+                        <button
+                          type="button"
+                          onClick={() => handleExcludeUser(vol.id, vol.name)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100"
+                          title="Excluir do sistema"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Excluir
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

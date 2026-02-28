@@ -38,6 +38,114 @@ export async function getMinistriesAction(): Promise<ActionResult<Ministry[]>> {
   return { success: true, data: ministries }
 }
 
+// Listar todos os ministérios da paróquia (para VOLUNTEER ver "Outros ministérios")
+export async function getAllMinistriesForParishAction(): Promise<ActionResult<Ministry[]>> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (!ctx.parishId) return { success: false, error: 'Usuário sem paróquia associada.' }
+
+  const { data, error } = await supabase
+    .from('ministries')
+    .select('*')
+    .eq('parish_id', ctx.parishId)
+    .order('name')
+
+  if (error) return { success: false, error: 'Erro ao buscar ministérios.' }
+  return { success: true, data: data ?? [] }
+}
+
+// Voluntário solicita acesso a um ministério (status PENDING até coordenador aprovar)
+export async function requestMinistryAccessAction(ministryId: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (ctx.role !== 'VOLUNTEER') {
+    return { success: false, error: 'Apenas voluntários podem se candidatar a ministérios.' }
+  }
+  if (!ctx.parishId) return { success: false, error: 'Usuário sem paróquia associada.' }
+
+  const { data: ministry } = await supabase
+    .from('ministries')
+    .select('id, parish_id')
+    .eq('id', ministryId)
+    .single()
+
+  if (!ministry || ministry.parish_id !== ctx.parishId) {
+    return { success: false, error: 'Ministério não encontrado ou não pertence à sua paróquia.' }
+  }
+
+  const { data: existing } = await supabase
+    .from('user_ministries')
+    .select('status')
+    .eq('user_id', ctx.user.id)
+    .eq('ministry_id', ministryId)
+    .maybeSingle()
+
+  if (existing) {
+    if ((existing as { status?: string }).status === 'APPROVED') {
+      return { success: false, error: 'Você já tem acesso a este ministério.' }
+    }
+    return { success: false, error: 'Solicitação já enviada. Aguarde aprovação do coordenador.' }
+  }
+
+  const { error } = await supabase
+    .from('user_ministries')
+    .insert({ user_id: ctx.user.id, ministry_id: ministryId, status: 'PENDING' })
+
+  if (error) {
+    if (error.code === '23505') return { success: false, error: 'Solicitação já enviada.' }
+    return { success: false, error: 'Erro ao enviar solicitação.' }
+  }
+
+  revalidatePath('/ministerios')
+  return { success: true }
+}
+
+// Para VOLUNTEER: lista de ministérios com status do usuário (approved, pending, none)
+export type MinistryWithStatus = Ministry & { userStatus: 'approved' | 'pending' | 'none' }
+
+export async function getMinistriesForVolunteerAction(): Promise<
+  ActionResult<{ my: Ministry[]; other: MinistryWithStatus[] }>
+> {
+  const supabase = await createClient()
+  const ctx = await getAuthenticatedUser()
+  if (!ctx) return { success: false, error: 'Não autorizado.' }
+  if (ctx.role !== 'VOLUNTEER' || !ctx.parishId) {
+    return { success: false, error: 'Apenas voluntários com paróquia podem usar esta ação.' }
+  }
+
+  const { data: allMinistries } = await supabase
+    .from('ministries')
+    .select('*')
+    .eq('parish_id', ctx.parishId)
+    .order('name')
+
+  const { data: userMinistries } = await supabase
+    .from('user_ministries')
+    .select('ministry_id, status')
+    .eq('user_id', ctx.user.id)
+
+  const statusByMinistry = new Map<string, string>()
+  for (const um of userMinistries ?? []) {
+    statusByMinistry.set(um.ministry_id, (um as { status?: string }).status ?? 'APPROVED')
+  }
+
+  const my: Ministry[] = []
+  const other: MinistryWithStatus[] = []
+
+  for (const m of allMinistries ?? []) {
+    const status = statusByMinistry.get(m.id)
+    if (status === 'APPROVED' || !status) {
+      my.push(m)
+    } else {
+      other.push({ ...m, userStatus: status === 'PENDING' ? 'pending' : 'none' })
+    }
+  }
+
+  return { success: true, data: { my, other } }
+}
+
 // Criar ministério
 export async function createMinistryAction(
   formData: FormData

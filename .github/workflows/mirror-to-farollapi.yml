@@ -1,6 +1,6 @@
 name: Mirror to farollapi-cloud
 
-on:
+"on":
   push:
     branches:
       - '**'
